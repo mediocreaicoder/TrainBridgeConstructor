@@ -58,8 +58,17 @@ export function renderFrame(
   // Setting canvas.width resets context state, so set this every frame.
   ctx.imageSmoothingEnabled = false;
 
-  // From here on, all drawing uses world coordinates.
-  ctx.setTransform(1, 0, 0, 1, -camera.left, -camera.top);
+  // From here on, all drawing uses world coordinates. The camera keeps
+  // left/top on whole canvas pixels; rounding only removes float noise.
+  const scale = camera.pixelScale;
+  ctx.setTransform(
+    scale,
+    0,
+    0,
+    scale,
+    -Math.round(camera.left * scale),
+    -Math.round(camera.top * scale),
+  );
 
   drawSky(ctx, camera);
   if (level.waterY !== null) drawWater(ctx, camera, level.waterY, state.time);
@@ -104,7 +113,8 @@ function drawWater(
 
   // A one-pixel highlight that bobs up and down: a column at a time.
   ctx.fillStyle = PALETTE.waterHighlight;
-  for (let x = camera.left; x < right; x++) {
+  // Start on a whole world unit so the wave doesn't shift while panning.
+  for (let x = Math.floor(camera.left); x < right; x++) {
     const wave = Math.round(Math.sin(x * 0.18 + time * 2.5));
     ctx.fillRect(x, surfaceY + wave, 1, 1);
   }

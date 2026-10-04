@@ -7,6 +7,8 @@ import type { MaterialId } from '../game/materials';
 export interface GameControls {
   undo(): void;
   redo(): void;
+  zoomIn(): void;
+  zoomOut(): void;
 }
 
 interface GameCanvasProps {
@@ -59,6 +61,8 @@ export function GameCanvas({ level, material, onEvent, ref }: GameCanvasProps) {
     () => ({
       undo: () => engineRef.current?.undo(),
       redo: () => engineRef.current?.redo(),
+      zoomIn: () => engineRef.current?.zoomIn(),
+      zoomOut: () => engineRef.current?.zoomOut(),
     }),
     [],
   );

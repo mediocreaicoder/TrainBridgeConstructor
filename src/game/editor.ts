@@ -64,7 +64,11 @@ export const canRedo = (history: History): boolean => history.future.length > 0;
 /** Free beam ends snap to a world grid with this spacing. */
 export const GRID_SIZE = 5;
 
-/** While dragging, the end snaps to an existing joint within this distance. */
+/**
+ * While dragging, the end snaps to an existing joint within this distance.
+ * This is the zoomed-out value; the engine passes a smaller radius when
+ * zoomed in, so grid points next to a joint can be reached.
+ */
 export const JOINT_SNAP_RADIUS = 8;
 
 /** The beam the player would get if they let go now. Drawn as a preview. */
@@ -91,9 +95,10 @@ export function planBeam(
   fromJointId: number,
   pointer: Vec2,
   material: MaterialId,
+  snapRadius = JOINT_SNAP_RADIUS,
 ): BeamPlan {
   const from = getJoint(bridge, fromJointId).position;
-  const target = resolveTarget(bridge, fromJointId, pointer, material);
+  const target = resolveTarget(bridge, fromJointId, pointer, material, snapRadius);
   return {
     fromJointId,
     target,
@@ -109,8 +114,9 @@ function resolveTarget(
   fromJointId: number,
   pointer: Vec2,
   material: MaterialId,
+  snapRadius: number,
 ): BeamTarget {
-  const nearJoint = findJointNear(bridge, pointer, JOINT_SNAP_RADIUS, fromJointId);
+  const nearJoint = findJointNear(bridge, pointer, snapRadius, fromJointId);
   if (nearJoint) return { kind: 'joint', jointId: nearJoint.id };
 
   const from = getJoint(bridge, fromJointId).position;

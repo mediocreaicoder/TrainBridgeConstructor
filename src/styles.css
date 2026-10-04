@@ -67,8 +67,10 @@ body,
   right: 0;
   bottom: max(8px, env(safe-area-inset-bottom));
   display: flex;
-  justify-content: center;
-  gap: 12px;
+  /* Portrait: the two groups as two rows; too many buttons for one row. */
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   /* Let touches between the buttons reach the canvas. */
   pointer-events: none;
 }
@@ -108,6 +110,11 @@ body,
     inset -2px -2px 0 #4a5f86;
 }
 
+/* Single-symbol buttons (zoom) get a bigger glyph. */
+.toolbar-icon {
+  font-size: 14px;
+}
+
 .toolbar-button:disabled {
   opacity: 0.4;
   cursor: default;
@@ -145,6 +152,7 @@ body,
     top: 0;
     bottom: 0;
     padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+    flex-direction: row;
     justify-content: space-between;
     align-items: center;
   }

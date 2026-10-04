@@ -24,6 +24,9 @@ What works:
 - Phase 1 is done: drag from a joint to build beams (grid snap 5, joint snap 8, end lifted 20 CSS px
   above the finger on touch), double-tap a beam to remove it, undo/redo, toolbar with materials.
   Decisions: beams must start from an anchor or joint; beams may cross.
+- Zoom: pinch (zoom + pan), one-finger pan on empty space, mouse wheel, and −/+ buttons. Zoom 1–4;
+  the view can't leave the zoom-1 area. Zooming in makes pixels bigger (canvas `pixelScale`).
+  Touch radii (grab, snap, double-tap) are in CSS px, so building is more precise when zoomed in.
 
 What doesn't exist yet: physics, trains, sound, more levels.
 
@@ -152,6 +155,14 @@ undo/redo sequences (including that a new action clears `future`).
 
 Done when: on the phone you can build a deck across level 1, remove a beam with a double-tap,
 and undo and redo several steps.
+
+### Follow-up (agreed, not built yet): easy symmetric triangle zigzag
+
+A wood beam at 45° that starts at the same joint as a horizontal track beam must be easy to end
+exactly below the middle of that track beam's length. Then a symmetric zigzag of triangles
+(Warren truss) under the deck is easy to build. Likely approach: snapping that favours 45°
+angles and the "half a track beam" horizontal reach from the start joint. Clarify the details
+with the user before building it.
 
 ---
 

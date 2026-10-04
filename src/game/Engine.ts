@@ -7,13 +7,26 @@ import {
   removeBeam,
   type BeamTarget,
 } from './bridge';
-import { cssToWorld, fitCamera, type Camera } from './camera';
+import {
+  computeCamera,
+  cssPixelsPerUnit,
+  cssToWorld,
+  fitView,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  viewWithAnchor,
+  type Camera,
+  type CameraView,
+  type ScreenSize,
+} from './camera';
 import { installDebugHook } from './debug';
 import {
   canRedo,
   canUndo,
   commit,
   createHistory,
+  GRID_SIZE,
+  JOINT_SNAP_RADIUS,
   planBeam,
   redo,
   undo,
@@ -25,22 +38,32 @@ import { renderFrame, type FrameState } from './render';
 import { distance, type Vec2 } from './types';
 
 /** Events the engine reports to the UI. */
-export type EngineEvent = { type: 'historyChanged'; canUndo: boolean; canRedo: boolean };
+export type EngineEvent =
+  | { type: 'historyChanged'; canUndo: boolean; canRedo: boolean }
+  | { type: 'zoomChanged'; canZoomIn: boolean; canZoomOut: boolean };
 
 export type EngineListener = (event: EngineEvent) => void;
 
-/** Pressing within this many world units of a joint grabs it to start a beam. */
-const JOINT_GRAB_RADIUS = 10;
+// Touch targets are sized in CSS pixels, so they feel the same at every zoom
+// level. Each is capped in world units, so zooming out doesn't make them huge.
 
-/** The finger must move this far (world units) before a press becomes a drag. */
-const DRAG_START_DISTANCE = 3;
+/** Pressing this close to a joint grabs it to start a beam. */
+const JOINT_GRAB_CSS_PX = 24;
+const JOINT_GRAB_MAX_RADIUS = 10;
+
+/** While dragging, the beam end snaps to a joint this close. */
+const JOINT_SNAP_CSS_PX = 16;
+
+/** A double-tap this close to a beam removes it. */
+const BEAM_HIT_CSS_PX = 14;
+const BEAM_HIT_MAX_RADIUS = 5;
+
+/** The finger must move this far before a press becomes a drag or a pan. */
+const DRAG_START_CSS_PX = 6;
 
 /** Two taps within this time and distance make a double-tap. */
 const DOUBLE_TAP_MS = 300;
-const DOUBLE_TAP_DISTANCE = 8;
-
-/** A double-tap within this many world units of a beam removes it. */
-const BEAM_HIT_RADIUS = 5;
+const DOUBLE_TAP_CSS_PX = 24;
 
 /**
  * On touch screens the dragged beam end is drawn this many CSS pixels above
@@ -48,23 +71,52 @@ const BEAM_HIT_RADIUS = 5;
  */
 const TOUCH_LIFT_CSS_PX = 20;
 
+/** Zoom factor of the zoom buttons. */
+const ZOOM_STEP = 1.5;
+
+/** Mouse wheel zoom speed: zoom factor per pixel of wheel movement. */
+const WHEEL_ZOOM_SPEED = 0.002;
+
 /** Caps the time step so a backgrounded tab doesn't cause one huge jump. */
 const MAX_FRAME_SECONDS = 0.1;
 
-/** The press currently in progress. */
-interface Gesture {
-  pointerId: number;
-  /** Where the finger went down, in world units. */
-  start: Vec2;
-  /** The joint the press started on, if any. Only those presses can drag. */
-  fromJointId: number | null;
-  dragging: boolean;
-  /** How far to lift the beam end above the pointer, in world units. */
-  lift: number;
-}
+/**
+ * What the finger(s) on the screen are doing:
+ * - build: one finger that started on a joint; dragging it plans a beam.
+ * - pan: one finger that started elsewhere; dragging it moves the view.
+ * - pinch: two fingers zoom and move the view.
+ * - ignore: a pinch ended with a finger still down; wait until all are up.
+ */
+type Gesture =
+  | {
+      kind: 'build';
+      pointerId: number;
+      startCss: Vec2;
+      start: Vec2;
+      fromJointId: number;
+      dragging: boolean;
+      /** How far to lift the beam end above the pointer, in world units. */
+      lift: number;
+    }
+  | {
+      kind: 'pan';
+      pointerId: number;
+      startCss: Vec2;
+      start: Vec2;
+      moved: boolean;
+    }
+  | {
+      kind: 'pinch';
+      startDistance: number;
+      startZoom: number;
+      /** The world point that stays under the middle of the two fingers. */
+      anchor: Vec2;
+    }
+  | { kind: 'ignore' };
 
 interface Tap {
   time: number;
+  css: Vec2;
   position: Vec2;
 }
 
@@ -79,10 +131,14 @@ export class Engine {
   private readonly listeners = new Set<EngineListener>();
   private readonly resizeObserver: ResizeObserver;
 
+  private screen: ScreenSize = { width: 0, height: 0 };
+  private view: CameraView;
   private camera: Camera;
   private history: History;
   private material: MaterialId = 'track';
   private state: FrameState;
+  /** Fingers / mouse buttons currently down, in CSS pixels relative to the canvas. */
+  private readonly pointers = new Map<number, Vec2>();
   private gesture: Gesture | null = null;
   private lastTap: Tap | null = null;
   private frameId: number | null = null;
@@ -98,7 +154,8 @@ export class Engine {
     if (!ctx) throw new Error('2D canvas is not supported');
     this.ctx = ctx;
 
-    this.camera = fitCamera(1, 1, level);
+    this.view = fitView(level);
+    this.camera = computeCamera({ width: 1, height: 1 }, level, this.view);
     this.history = createHistory(createBridge(level.anchors));
     this.state = {
       time: 0,
@@ -112,15 +169,17 @@ export class Engine {
     canvas.addEventListener('pointerdown', this.handlePointerDown);
     canvas.addEventListener('pointermove', this.handlePointerMove);
     canvas.addEventListener('pointerup', this.handlePointerUp);
-    canvas.addEventListener('pointercancel', this.handlePointerCancel);
+    canvas.addEventListener('pointercancel', this.handlePointerUp);
+    canvas.addEventListener('wheel', this.handleWheel, { passive: true });
   }
 
   start(): void {
     this.resizeObserver.observe(this.canvas);
     this.handleResize();
     this.frameId = requestAnimationFrame(this.tick);
-    // Tell the UI the starting undo/redo state (e.g. after a level change).
+    // Tell the UI the starting state (e.g. after a level change).
     this.emitHistoryChanged();
+    this.emitZoomChanged();
 
     // Vite replaces import.meta.env.DEV with `false` in production builds,
     // so this branch and the debug module are dropped from the bundle.
@@ -137,7 +196,8 @@ export class Engine {
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
     this.canvas.removeEventListener('pointermove', this.handlePointerMove);
     this.canvas.removeEventListener('pointerup', this.handlePointerUp);
-    this.canvas.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.canvas.removeEventListener('pointercancel', this.handlePointerUp);
+    this.canvas.removeEventListener('wheel', this.handleWheel);
     this.listeners.clear();
   }
 
@@ -150,6 +210,11 @@ export class Engine {
   /** A snapshot of the current frame state, safe for callers to keep or modify. */
   getState(): FrameState {
     return structuredClone(this.state);
+  }
+
+  /** A copy of the current zoom and view centre. */
+  getView(): CameraView {
+    return structuredClone(this.view);
   }
 
   // -------------------------------------------------------------------------
@@ -167,6 +232,14 @@ export class Engine {
 
   redo(): void {
     this.setHistory(redo(this.history));
+  }
+
+  zoomIn(): void {
+    this.zoomAroundScreenCentre(this.view.zoom * ZOOM_STEP);
+  }
+
+  zoomOut(): void {
+    this.zoomAroundScreenCentre(this.view.zoom / ZOOM_STEP);
   }
 
   /**
@@ -221,91 +294,207 @@ export class Engine {
   }
 
   // -------------------------------------------------------------------------
-  // Resize
+  // Camera: resize and zoom
   // -------------------------------------------------------------------------
 
   private handleResize(): void {
     const { clientWidth, clientHeight } = this.canvas;
     if (clientWidth === 0 || clientHeight === 0) return; // hidden / not laid out yet
 
-    this.camera = fitCamera(clientWidth, clientHeight, this.level);
-    // Resizing the backing store also clears it; the next tick redraws.
-    this.canvas.width = this.camera.viewWidth;
-    this.canvas.height = this.camera.viewHeight;
+    this.screen = { width: clientWidth, height: clientHeight };
+    // Re-clamp the view: what fits depends on the screen's shape.
+    const { center, zoom } = this.view;
+    this.setView(viewWithAnchor(center, this.screenCentre(), zoom, this.screen, this.level));
   }
 
+  /** Changes zoom/pan and rebuilds the camera. */
+  private setView(view: CameraView): void {
+    const zoomLimitsChanged =
+      this.atZoomLimit(view.zoom, MIN_ZOOM) !== this.atZoomLimit(this.view.zoom, MIN_ZOOM) ||
+      this.atZoomLimit(view.zoom, MAX_ZOOM) !== this.atZoomLimit(this.view.zoom, MAX_ZOOM);
+    this.view = view;
+    this.updateCamera();
+    if (zoomLimitsChanged) this.emitZoomChanged();
+  }
+
+  private updateCamera(): void {
+    if (this.screen.width === 0) return;
+    this.camera = computeCamera(this.screen, this.level, this.view);
+    // Resizing the backing store clears it, so only do it when the size
+    // really changes. The next tick redraws.
+    if (this.canvas.width !== this.camera.canvasWidth) this.canvas.width = this.camera.canvasWidth;
+    if (this.canvas.height !== this.camera.canvasHeight) {
+      this.canvas.height = this.camera.canvasHeight;
+    }
+  }
+
+  private zoomAroundScreenCentre(zoom: number): void {
+    const centre = this.screenCentre();
+    const anchor = this.cssToWorldPoint(centre);
+    this.setView(viewWithAnchor(anchor, centre, zoom, this.screen, this.level));
+  }
+
+  private atZoomLimit(zoom: number, limit: number): boolean {
+    return Math.abs(zoom - limit) < 1e-6;
+  }
+
+  private emitZoomChanged(): void {
+    this.emit({
+      type: 'zoomChanged',
+      canZoomIn: !this.atZoomLimit(this.view.zoom, MAX_ZOOM),
+      canZoomOut: !this.atZoomLimit(this.view.zoom, MIN_ZOOM),
+    });
+  }
+
+  /** Mouse wheel / trackpad: zoom around the point under the cursor. */
+  private handleWheel = (event: WheelEvent): void => {
+    const css = this.toCss(event);
+    const anchor = this.cssToWorldPoint(css);
+    const zoom = this.view.zoom * Math.exp(-event.deltaY * WHEEL_ZOOM_SPEED);
+    this.setView(viewWithAnchor(anchor, css, zoom, this.screen, this.level));
+  };
+
   // -------------------------------------------------------------------------
-  // Input: drag from a joint to build, double-tap a beam to remove it
+  // Input: drag from a joint to build, drag elsewhere to pan, pinch to zoom,
+  // double-tap a beam to remove it
   // -------------------------------------------------------------------------
 
   private handlePointerDown = (event: PointerEvent): void => {
-    if (this.gesture) return; // ignore extra fingers while one is down
-
     // Keep receiving move/up events even if the finger slides off the canvas.
     this.canvas.setPointerCapture(event.pointerId);
-    const start = this.toWorld(event);
-    const fromJoint = findJointNear(this.history.present, start, JOINT_GRAB_RADIUS);
+    this.pointers.set(event.pointerId, this.toCss(event));
 
-    this.gesture = {
-      pointerId: event.pointerId,
-      start,
-      fromJointId: fromJoint?.id ?? null,
-      dragging: false,
-      lift: event.pointerType === 'touch' ? this.cssToWorldLength(TOUCH_LIFT_CSS_PX) : 0,
-    };
-    this.state.activeJoint = this.gesture.fromJointId;
-    this.state.pointer = start;
+    if (this.pointers.size === 1) this.startSingleFingerGesture(event);
+    else if (this.pointers.size === 2) this.startPinch();
+    // A third finger is ignored.
   };
 
-  private handlePointerMove = (event: PointerEvent): void => {
-    const gesture = this.gesture;
-    if (!gesture || event.pointerId !== gesture.pointerId) return;
+  private startSingleFingerGesture(event: PointerEvent): void {
+    const startCss = this.toCss(event);
+    const start = this.cssToWorldPoint(startCss);
+    const grabRadius = this.cssToWorldRadius(JOINT_GRAB_CSS_PX, JOINT_GRAB_MAX_RADIUS);
+    const fromJoint = findJointNear(this.history.present, start, grabRadius);
 
-    const position = this.toWorld(event);
-    if (
-      !gesture.dragging &&
-      gesture.fromJointId !== null &&
-      distance(position, gesture.start) >= DRAG_START_DISTANCE
-    ) {
+    this.gesture = fromJoint
+      ? {
+          kind: 'build',
+          pointerId: event.pointerId,
+          startCss,
+          start,
+          fromJointId: fromJoint.id,
+          dragging: false,
+          lift: event.pointerType === 'touch' ? this.cssToWorldRadius(TOUCH_LIFT_CSS_PX) : 0,
+        }
+      : { kind: 'pan', pointerId: event.pointerId, startCss, start, moved: false };
+    this.state.activeJoint = fromJoint?.id ?? null;
+    this.state.pointer = start;
+  }
+
+  /** A second finger turns whatever the first was doing into a pinch. */
+  private startPinch(): void {
+    const [a, b] = [...this.pointers.values()];
+    if (!a || !b) return;
+    this.clearGestureVisuals();
+    this.lastTap = null;
+    this.gesture = {
+      kind: 'pinch',
+      startDistance: Math.max(1, distance(a, b)),
+      startZoom: this.view.zoom,
+      anchor: this.cssToWorldPoint(midpoint(a, b)),
+    };
+  }
+
+  private handlePointerMove = (event: PointerEvent): void => {
+    if (!this.pointers.has(event.pointerId)) return; // hovering mouse
+    const css = this.toCss(event);
+    this.pointers.set(event.pointerId, css);
+
+    const gesture = this.gesture;
+    if (!gesture) return;
+    switch (gesture.kind) {
+      case 'build':
+        if (event.pointerId === gesture.pointerId) this.moveBuild(gesture, css);
+        break;
+      case 'pan':
+        if (event.pointerId === gesture.pointerId) this.movePan(gesture, css);
+        break;
+      case 'pinch':
+        this.movePinch(gesture);
+        break;
+      case 'ignore':
+        break;
+    }
+  };
+
+  private moveBuild(gesture: Extract<Gesture, { kind: 'build' }>, css: Vec2): void {
+    if (!gesture.dragging && distance(css, gesture.startCss) >= DRAG_START_CSS_PX) {
       gesture.dragging = true;
     }
-    if (!gesture.dragging || gesture.fromJointId === null) {
-      this.state.pointer = position;
-      return;
-    }
+    if (!gesture.dragging) return;
 
+    const position = this.cssToWorldPoint(css);
     const beamEnd = { x: position.x, y: position.y - gesture.lift };
+    // A smaller snap radius when zoomed in lets the player reach grid points
+    // right next to a joint, but never less than half a grid step.
+    const snapRadius = Math.max(
+      GRID_SIZE / 2,
+      this.cssToWorldRadius(JOINT_SNAP_CSS_PX, JOINT_SNAP_RADIUS),
+    );
     const plan = planBeam(
       this.history.present,
       this.level.terrain,
       gesture.fromJointId,
       beamEnd,
       this.material,
+      snapRadius,
     );
     this.state.pointer = beamEnd;
     this.state.plan = plan;
     this.state.activeJoint = plan.target.kind === 'joint' ? plan.target.jointId : null;
-  };
+  }
+
+  /** Keeps the world point the finger first touched under the finger. */
+  private movePan(gesture: Extract<Gesture, { kind: 'pan' }>, css: Vec2): void {
+    if (!gesture.moved && distance(css, gesture.startCss) >= DRAG_START_CSS_PX) {
+      gesture.moved = true;
+      this.state.pointer = null;
+    }
+    if (!gesture.moved) return;
+    this.setView(viewWithAnchor(gesture.start, css, this.view.zoom, this.screen, this.level));
+  }
+
+  /** Zooms by how far the fingers spread, around the point between them. */
+  private movePinch(gesture: Extract<Gesture, { kind: 'pinch' }>): void {
+    const [a, b] = [...this.pointers.values()];
+    if (!a || !b) return;
+    const zoom = (gesture.startZoom * distance(a, b)) / gesture.startDistance;
+    this.setView(viewWithAnchor(gesture.anchor, midpoint(a, b), zoom, this.screen, this.level));
+  }
 
   private handlePointerUp = (event: PointerEvent): void => {
+    if (!this.pointers.delete(event.pointerId)) return;
     const gesture = this.gesture;
-    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const cancelled = event.type === 'pointercancel';
 
-    const { plan } = this.state;
-    if (gesture.dragging && plan?.placement.ok) {
-      this.tryAddBeam(plan.fromJointId, plan.target);
-    } else if (!gesture.dragging) {
-      this.handleTap({ time: event.timeStamp, position: gesture.start });
+    if (gesture?.kind === 'build' && event.pointerId === gesture.pointerId) {
+      const { plan } = this.state;
+      if (gesture.dragging && plan?.placement.ok && !cancelled) {
+        this.tryAddBeam(plan.fromJointId, plan.target);
+      } else if (!gesture.dragging && !cancelled) {
+        this.handleTap({ time: event.timeStamp, css: gesture.startCss, position: gesture.start });
+      }
+    } else if (gesture?.kind === 'pan' && event.pointerId === gesture.pointerId) {
+      if (!gesture.moved && !cancelled) {
+        this.handleTap({ time: event.timeStamp, css: gesture.startCss, position: gesture.start });
+      }
     }
-    this.endGesture();
+
+    this.clearGestureVisuals();
+    // After a pinch, the remaining finger does nothing until it is lifted too.
+    this.gesture = this.pointers.size > 0 ? { kind: 'ignore' } : null;
   };
 
-  private handlePointerCancel = (event: PointerEvent): void => {
-    if (event.pointerId === this.gesture?.pointerId) this.endGesture();
-  };
-
-  private endGesture(): void {
-    this.gesture = null;
+  private clearGestureVisuals(): void {
     this.state.plan = null;
     this.state.pointer = null;
     this.state.activeJoint = null;
@@ -317,35 +506,48 @@ export class Engine {
     const isDoubleTap =
       previous !== null &&
       tap.time - previous.time <= DOUBLE_TAP_MS &&
-      distance(tap.position, previous.position) <= DOUBLE_TAP_DISTANCE;
+      distance(tap.css, previous.css) <= DOUBLE_TAP_CSS_PX;
 
     if (!isDoubleTap) {
       this.lastTap = tap;
       return;
     }
     this.lastTap = null; // a third tap starts a new pair
-    const beam = findBeamNear(this.history.present, tap.position, BEAM_HIT_RADIUS);
+    const hitRadius = this.cssToWorldRadius(BEAM_HIT_CSS_PX, BEAM_HIT_MAX_RADIUS);
+    const beam = findBeamNear(this.history.present, tap.position, hitRadius);
     if (beam) this.removeBeam(beam.id);
   }
 
-  private toWorld(event: PointerEvent): Vec2 {
+  // -------------------------------------------------------------------------
+  // Coordinate helpers
+  // -------------------------------------------------------------------------
+
+  /** Pointer position in CSS pixels relative to the canvas' top-left corner. */
+  private toCss(event: MouseEvent): Vec2 {
     const rect = this.canvas.getBoundingClientRect();
-    return cssToWorld(
-      this.camera,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-      rect.width,
-      rect.height,
-    );
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
-  /** Converts a length in CSS pixels to world units at the current zoom. */
-  private cssToWorldLength(cssPixels: number): number {
-    const { height } = this.canvas.getBoundingClientRect();
-    return height === 0 ? 0 : (cssPixels / height) * this.camera.viewHeight;
+  private cssToWorldPoint(css: Vec2): Vec2 {
+    return cssToWorld(this.camera, css.x, css.y, this.screen.width, this.screen.height);
+  }
+
+  /** Converts a CSS pixel length to world units at the current zoom, capped at `maxWorld`. */
+  private cssToWorldRadius(cssPixels: number, maxWorld = Infinity): number {
+    if (this.screen.width === 0) return maxWorld;
+    const worldUnits = cssPixels / cssPixelsPerUnit(this.screen, this.level, this.view);
+    return Math.min(maxWorld, worldUnits);
+  }
+
+  private screenCentre(): Vec2 {
+    return { x: this.screen.width / 2, y: this.screen.height / 2 };
   }
 
   private emit(event: EngineEvent): void {
     for (const listener of this.listeners) listener(event);
   }
+}
+
+function midpoint(a: Vec2, b: Vec2): Vec2 {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
