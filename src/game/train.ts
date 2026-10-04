@@ -1,18 +1,21 @@
-import { beamEnds, type Bridge } from './bridge';
 import type { Level } from './level';
+import { GRAVITY, particleAt, type PointLoad, type Simulation } from './physics';
 import type { Vec2 } from './types';
 
 /**
- * Vehicles that drive across the bridge. In this phase the bridge is rigid:
- * the vehicle follows the track but doesn't load it (that comes with physics).
+ * Vehicles that drive across the bridge. The vehicle rides on the simulated
+ * track beams, and its weight pushes down on them (`wheelLoads`), which is
+ * what makes the bridge sag and, if it is too weak, break.
  *
  * Everything here is pure: `stepVehicle` returns a new Vehicle.
  */
 
-/** A drivable piece of track: a bank rail or a track beam. */
+/** A drivable piece of track: a bank rail, or a track beam in the simulation. */
 export interface TrackSegment {
   a: Vec2;
   b: Vec2;
+  /** For track beams: the particles at the ends, which carry the wheel's weight. */
+  particles: [number, number] | null;
 }
 
 export interface VehicleSpec {
@@ -20,10 +23,12 @@ export interface VehicleSpec {
   wheelBase: number;
   /** Rolling speed, in world units per second. */
   speed: number;
+  /** Mass in the same units as the beams (see materials.ts). */
+  mass: number;
 }
 
 /** The first vehicle: a one-man handcar, small and slow. */
-export const HANDCAR: VehicleSpec = { wheelBase: 8, speed: 16 };
+export const HANDCAR: VehicleSpec = { wheelBase: 8, speed: 16, mass: 140 };
 
 export type VehicleStatus = 'rolling' | 'falling' | 'sunk';
 export type RunOutcome = 'arrived' | 'lost';
@@ -58,28 +63,28 @@ const STEP_TOLERANCE = 2.5;
 /** Rails on the banks reach this far beyond the bridge ends. */
 const RAIL_EXTENT = 1000;
 
-/** Gravity while falling, in world units per second². Exaggerated, as games do. */
-const GRAVITY = 160;
-
 /** How fast a falling vehicle tips forward, in radians per second. */
 const FALL_SPIN = 3;
 
 /**
- * The drivable track: the rails on both banks plus every track beam that
- * isn't too steep to drive on (more than 45°).
+ * The drivable track: the rails on both banks plus every intact track beam
+ * in the simulation that isn't too steep to drive on (more than 45°).
  */
-export function buildTrack(level: Level, bridge: Bridge): TrackSegment[] {
+export function buildTrack(level: Level, sim: Simulation): TrackSegment[] {
   const { bridgeStart, bridgeEnd } = level;
   const rails: TrackSegment[] = [
-    { a: { x: bridgeStart.x - RAIL_EXTENT, y: bridgeStart.y }, b: bridgeStart },
-    { a: bridgeEnd, b: { x: bridgeEnd.x + RAIL_EXTENT, y: bridgeEnd.y } },
+    { a: { x: bridgeStart.x - RAIL_EXTENT, y: bridgeStart.y }, b: bridgeStart, particles: null },
+    { a: bridgeEnd, b: { x: bridgeEnd.x + RAIL_EXTENT, y: bridgeEnd.y }, particles: null },
   ];
-  const beams = bridge.beams
-    .filter((beam) => beam.material === 'track')
-    .map((beam) => {
-      const [a, b] = beamEnds(bridge, beam);
-      return { a, b };
-    })
+  const beams = sim.constraints
+    .filter((c) => c.material === 'track' && !c.broken && !c.fragment)
+    .map(
+      (c): TrackSegment => ({
+        a: particleAt(sim, c.a).position,
+        b: particleAt(sim, c.b).position,
+        particles: [c.a, c.b],
+      }),
+    )
     .filter(({ a, b }) => Math.abs(b.y - a.y) <= Math.abs(b.x - a.x));
   return [...rails, ...beams];
 }
@@ -116,6 +121,37 @@ export function stepVehicle(
 }
 
 /**
+ * The forces the rolling vehicle puts on the bridge. Its weight is shared by
+ * the wheels that stand on track. A wheel on a track beam pushes on the beam's
+ * two end particles, split by where along the beam it stands (the lever
+ * principle: standing a quarter of the way along puts 3/4 on the near end).
+ * Wheels on the bank rails push on solid ground, so they add no load.
+ */
+export function wheelLoads(
+  vehicle: Vehicle,
+  spec: VehicleSpec,
+  track: readonly TrackSegment[],
+): PointLoad[] {
+  if (vehicle.status !== 'rolling') return [];
+
+  const contacts = wheelPositions(vehicle, spec)
+    .map((wheel) => findTrackUnder(track, wheel.x, wheel.y))
+    .filter((contact) => contact !== null);
+  if (contacts.length === 0) return [];
+
+  const weightPerWheel = (spec.mass * GRAVITY) / contacts.length;
+  const loads: PointLoad[] = [];
+  for (const { segment, x } of contacts) {
+    if (!segment.particles) continue;
+    const t = (x - segment.a.x) / (segment.b.x - segment.a.x);
+    const [first, second] = segment.particles;
+    loads.push({ particle: first, force: { x: 0, y: weightPerWheel * (1 - t) } });
+    loads.push({ particle: second, force: { x: 0, y: weightPerWheel * t } });
+  }
+  return loads;
+}
+
+/**
  * Height of the track at `x`, choosing the segment closest to `nearY`.
  * Returns null if no segment is within STEP_TOLERANCE of that height.
  */
@@ -124,9 +160,25 @@ export function trackHeightAt(
   x: number,
   nearY: number,
 ): number | null {
-  let best: number | null = null;
+  return findTrackUnder(track, x, nearY)?.y ?? null;
+}
+
+interface TrackContact {
+  segment: TrackSegment;
+  x: number;
+  y: number;
+}
+
+/** The track segment under `x` closest to height `nearY` (within STEP_TOLERANCE), if any. */
+function findTrackUnder(
+  track: readonly TrackSegment[],
+  x: number,
+  nearY: number,
+): TrackContact | null {
+  let best: TrackContact | null = null;
   let bestGap = STEP_TOLERANCE;
-  for (const { a, b } of track) {
+  for (const segment of track) {
+    const { a, b } = segment;
     const left = Math.min(a.x, b.x);
     const right = Math.max(a.x, b.x);
     if (x < left || x > right || right === left) continue;
@@ -134,11 +186,22 @@ export function trackHeightAt(
     const y = a.y + ((x - a.x) / (b.x - a.x)) * (b.y - a.y);
     const gap = Math.abs(y - nearY);
     if (gap <= bestGap) {
-      best = y;
+      best = { segment, x, y };
       bestGap = gap;
     }
   }
   return best;
+}
+
+/** Where the two wheels touch the track, from the vehicle's position and tilt. */
+function wheelPositions(vehicle: Vehicle, spec: VehicleSpec): [Vec2, Vec2] {
+  const half = spec.wheelBase / 2;
+  const tilt = Math.sin(vehicle.angle) * half;
+  const { x, y } = vehicle.position;
+  return [
+    { x: x + half, y: y + tilt },
+    { x: x - half, y: y - tilt },
+  ];
 }
 
 /**
@@ -157,11 +220,11 @@ function roll(
   const centreY = trackHeightAt(track, x, vehicle.position.y);
   if (centreY === null) return startFalling(vehicle, spec);
 
-  // Where each wheel was last step, to find the track it is riding on.
-  const half = spec.wheelBase / 2;
-  const tilt = Math.sin(vehicle.angle) * half;
-  const frontY = trackHeightAt(track, x + half, vehicle.position.y + tilt);
-  const rearY = trackHeightAt(track, x - half, vehicle.position.y - tilt);
+  // Look for each wheel's track near where that wheel was last step.
+  const moved = { ...vehicle, position: { x, y: vehicle.position.y } };
+  const [front, rear] = wheelPositions(moved, spec);
+  const frontY = trackHeightAt(track, front.x, front.y);
+  const rearY = trackHeightAt(track, rear.x, rear.y);
   const angle =
     frontY !== null && rearY !== null ? Math.atan2(frontY - rearY, spec.wheelBase) : vehicle.angle;
 

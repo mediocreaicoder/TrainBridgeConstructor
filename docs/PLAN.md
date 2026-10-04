@@ -31,7 +31,10 @@ What works:
 - Phase 2 is done: Play/Stop, a one-man handcar rolls across a rigid bridge, arrives or falls
   into the water. Fixed 1/120 s simulation step.
 
-What doesn't exist yet: physics, sound, more levels, more trains.
+- Phase 3 is done: XPBD bridge physics, strain colours, beams break into dangling halves, the
+  handcar loads the bridge.
+
+What doesn't exist yet: sound and effects, more levels, more trains, terrain collisions.
 
 ### Files
 
@@ -46,6 +49,8 @@ What doesn't exist yet: physics, sound, more levels, more trains.
 | `src/game/materials.ts` | `MATERIALS` table (balancing values), `MIN_BEAM_LENGTH`. |
 | `src/game/bridge.ts` | Immutable `Bridge` model: `addBeam`, `removeBeam`, `canPlaceBeam`, hit tests. |
 | `src/game/editor.ts` | Undo/redo `History`, and `planBeam()` (snapping + validation while dragging). |
+| `src/game/physics.ts` | XPBD bridge simulation: particles, beam constraints, strain, breaking. |
+| `src/game/run.ts` | One run: simulation + vehicle, stepped together (used by Engine and tests). |
 | `src/game/train.ts` | Vehicle model: `buildTrack`, `createVehicle`, `stepVehicle` (roll, fall, outcome). |
 | `src/game/renderVehicle.ts` | Draws the handcar sprite (animated, rotated with nearest-neighbour). |
 | `src/game/pixelLine.ts` | Bresenham line helper shared by the renderers. |
@@ -237,46 +242,75 @@ Done when: level 1 can be won with a sensible bridge and lost with a bad one.
 Goal: press Play, the bridge sags under its own weight and under the vehicle, beams show strain in
 colour, and overloaded beams break. Stop restores the editor.
 
-### Method: Verlet integration with position-based distance constraints
+Status: done (2026-10-04).
 
-This is simple, stable and readable, and well suited to this genre.
+### Method: XPBD with small steps (`src/game/physics.ts`)
 
-- `src/game/physics.ts`: `createSimulation(bridge)` returns a `Simulation` with point masses
-  (`pos`, `prevPos`, `invMass`, where 0 means fixed) and constraints (`a`, `b`, `restLength`,
-  `material`, `broken`).
-- Uses the fixed 1/120 s step from phase 2, capped at about 8 steps per frame.
-- Per step: gravity → Verlet → N iterations (start at 20) of constraint solving → fixed joints
-  back in place.
-- Mass per joint = half the mass of each connected beam (from the materials table).
-- Stiffness: partial correction per iteration (`stiffness` in 0..1) per material.
-- Cable: only correct when `length > restLength`.
-- Strain = `(length - restLength) / restLength`. Smooth it a little (a moving average) before
-  colouring and breaking, so single spikes don't break a beam.
-- Break: when `|strain| > breakStrain` the constraint gets `broken = true`, and from then on it is
-  ignored. For now, the beam is drawn as two halves that fall (later: real fragments).
-- Fall-out: masses that fall below `waterY` (or the bottom of the screen) stop being simulated.
+Decision: XPBD (extended position-based dynamics) instead of plain Verlet with a 0..1 stiffness
+per iteration. With plain Verlet, how stiff a beam feels depends on the iteration count, which
+makes strain and breaking almost impossible to tune. XPBD gives every material a real stiffness:
+a beam under force F stretches by F / stiffness. The code is just as short.
+
+- `createSimulation(bridge)`: one particle per joint (anchors fixed, `inverseMass` 0) and one
+  distance constraint per beam. Each joint gets half the mass of every beam that meets there.
+- `stepSimulation(sim, loads, dt)`: the 1/120 s step is split into 8 substeps. Each substep
+  integrates (gravity + loads + damping), solves every constraint once
+  (`Δλ = −C / (wA + wB + α/h²)`, compliance `α = restLength / stiffness`), and derives velocities
+  from how far particles moved. Changes the simulation in place, for speed.
+- Gravity (160 units/s², shared with the vehicle) is faded in over the first second, so the
+  bridge settles instead of dropping and overshooting. Velocity damping 3/s.
+- Cables are tension-only: no correction (and zero strain) when shorter than their rest length.
+- Strain = `(length − rest) / rest`, smoothed per step (factor 0.2) before colouring and breaking.
+- Break: `|strain| > breakStrain` → the beam is replaced by two halves, each hanging from one of
+  its joints with a new loose particle in the middle (a quarter of the beam's mass each). Halves
+  can't break again and aren't drivable.
+- Not done (yet): collisions between the bridge and the terrain; falling debris just keeps falling.
+
+### Run: `src/game/run.ts`
+
+`createRun(level, bridge)` and `stepRun(run, level, spec, dt)` are shared by the engine and the
+tests: wheel loads from the current track → physics step → the vehicle follows the moved track.
 
 ### Vehicle load
 
-- The vehicle's track is now the simulated (moving) track beams instead of the rigid bridge.
-- Each wheel's weight is applied as a force on its beam's two joints, split by where the wheel is
-  along the beam (lever principle). This is what makes the bridge sag under the vehicle.
-- Broken track beams stop being drivable.
+- The track is rebuilt from the simulation every step: intact, non-fragment track beams.
+- `wheelLoads()`: the vehicle's weight is shared by the wheels that stand on track; a wheel on a
+  track beam pushes on the beam's two end particles, split by where it stands (lever principle).
+  Wheels on the bank rails add no load.
+- The handcar's mass is 140 (a track beam of length 20 weighs 20).
+
+### Tuned values (materials.ts)
+
+| Material | Mass/length | Stiffness | Breaks at strain |
+| --- | --- | --- | --- |
+| track | 1 | 4e7 | 0.35 % |
+| wood | 0.6 | 3e7 | 0.4 % |
+| steel | 1.5 | 1.2e8 | 0.8 % |
+| cable | 0.2 | 8e7 | 0.6 % (tension only) |
+
+Physics behind the tuning: a flat deck with no bracing is a chain of hinged links; its strain
+grows like (load / stiffness)^(2/3), while a truss's grows linearly. So stiff materials reward
+trusses. Outcomes on level 1 with these values (also covered by tests):
+
+- Deck of track alone: holds its own weight (about 55 % of the break limit), breaks under the
+  handcar.
+- Deck + wooden zigzag without a bottom chord: still hinged at the deck joints, so it breaks.
+- Wooden Warren truss (deck + zigzag + bottom chord): carries the handcar (peak about 60 %).
+- Deck + one wooden strut from each low anchor: holds, but at about 85 % (orange/red).
 
 ### Strain colour
 
-Linear from green (0) through yellow (50 % of the break limit) to red (100 %). Draw the beam in
-the strain colour in run mode, and in the material colour in edit mode.
+Green (0) → yellow (50 % of the break limit) → red (100 %), blended in RGB (`strainColor()` in
+`render.ts`). Track planks, wood and steel bodies and cables take the strain colour during a run;
+broken halves keep their material colour. Edit mode uses material colours.
 
 ### Tests
 
-- A short steel beam between two anchors holds after 5 simulated seconds.
-- A long, unsupported deck of wood breaks.
-- A cable under compression doesn't push.
-- Determinism: the same bridge gives identical positions after N steps.
-- The handcar makes a sensible deck sag, and a weak deck breaks under it.
-
-Done when: the bridge visibly sags, the colours make sense, and an obviously bad bridge collapses.
+`physics.test.ts`: masses and fixed anchors; a steel triangle holds; a track deck sags without
+breaking; a cable goes slack instead of pushing; determinism; a track deck breaks under the
+handcar and its beams become two dangling halves; a wooden Warren truss carries the handcar;
+the deck sags more with the handcar on it. `train.test.ts`: wheel loads (weight conserved, lever
+split, none on the bank or while falling). `render.test.ts`: strain colours.
 
 ---
 

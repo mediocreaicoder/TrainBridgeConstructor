@@ -35,14 +35,8 @@ import {
 import type { Level } from './level';
 import type { MaterialId } from './materials';
 import { renderFrame, type FrameState } from './render';
-import {
-  buildTrack,
-  createVehicle,
-  HANDCAR,
-  stepVehicle,
-  type RunOutcome,
-  type TrackSegment,
-} from './train';
+import { createRun, stepRun } from './run';
+import { HANDCAR, type RunOutcome } from './train';
 import { distance, type Vec2 } from './types';
 
 /** Editing the bridge, or watching the vehicle try to cross it. */
@@ -162,8 +156,6 @@ export class Engine {
   private history: History;
   private material: MaterialId = 'track';
   private mode: EngineMode = 'edit';
-  /** The track the vehicle drives on, built from the bridge when a run starts. */
-  private track: TrackSegment[] = [];
   /** Time not yet simulated, carried over to the next frame. */
   private unsimulatedSeconds = 0;
   /** Simulated time since the run was decided, or null while it is still undecided. */
@@ -195,7 +187,7 @@ export class Engine {
       activeJoint: null,
       pointer: null,
       plan: null,
-      vehicle: null,
+      run: null,
     };
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
 
@@ -267,11 +259,13 @@ export class Engine {
     if (this.mode === 'edit') this.setHistory(redo(this.history));
   }
 
-  /** Starts a run: the vehicle rolls in from the left. The bridge can't be edited meanwhile. */
+  /**
+   * Starts a run: the bridge becomes a physics simulation and the vehicle rolls
+   * in from the left. The bridge can't be edited meanwhile.
+   */
   play(): void {
     if (this.mode === 'run') return;
-    this.track = buildTrack(this.level, this.history.present);
-    this.state.vehicle = createVehicle(this.level);
+    this.state.run = createRun(this.level, this.history.present);
     this.unsimulatedSeconds = 0;
     this.secondsSinceOutcome = null;
     this.cancelBuildGesture();
@@ -281,7 +275,7 @@ export class Engine {
   /** Ends the run and goes back to editing the (unchanged) bridge. */
   stop(): void {
     if (this.mode === 'edit') return;
-    this.state.vehicle = null;
+    this.state.run = null;
     this.setMode('edit');
   }
 
@@ -375,11 +369,11 @@ export class Engine {
    * and ends the run AUTO_STOP_SECONDS later.
    */
   private simulateStep(): void {
-    const vehicle = this.state.vehicle;
-    if (this.mode !== 'run' || !vehicle) return;
+    const run = this.state.run;
+    if (this.mode !== 'run' || !run) return;
 
-    const next = stepVehicle(vehicle, HANDCAR, this.track, this.level, SIMULATION_STEP);
-    this.state.vehicle = next;
+    stepRun(run, this.level, HANDCAR, SIMULATION_STEP);
+    const next = run.vehicle;
 
     if (next.outcome && this.secondsSinceOutcome === null) {
       this.secondsSinceOutcome = 0;

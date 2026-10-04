@@ -2,10 +2,11 @@ import { beamEnds, type Beam, type Bridge, type Joint } from './bridge';
 import type { Camera } from './camera';
 import type { BeamPlan } from './editor';
 import type { Level } from './level';
-import type { MaterialId } from './materials';
+import { MATERIALS, type MaterialId } from './materials';
+import { particleAt, type Simulation } from './physics';
 import { forEachLinePixel } from './pixelLine';
 import { drawVehicle } from './renderVehicle';
-import type { Vehicle } from './train';
+import type { Run } from './run';
 import type { Vec2 } from './types';
 
 /** Everything that changes from frame to frame and affects drawing. */
@@ -20,8 +21,8 @@ export interface FrameState {
   pointer: Vec2 | null;
   /** The beam being dragged, drawn as a preview. */
   plan: BeamPlan | null;
-  /** The vehicle during a run, or null while editing. */
-  vehicle: Vehicle | null;
+  /** The simulated bridge and the vehicle during a run, or null while editing. */
+  run: Run | null;
 }
 
 /** A small, limited palette keeps the retro look consistent. */
@@ -83,10 +84,15 @@ export function renderFrame(
   drawGapHint(ctx, level, state.time);
   drawFlag(ctx, { x: level.bridgeStart.x - 8, y: level.bridgeStart.y }, PALETTE.flagStart);
   drawFlag(ctx, { x: level.bridgeEnd.x + 8, y: level.bridgeEnd.y }, PALETTE.flagEnd);
-  drawBeams(ctx, state.bridge);
-  if (state.plan) drawBeamPlan(ctx, state.plan);
-  drawJoints(ctx, state.bridge.joints, state.activeJoint, state.time);
-  if (state.vehicle) drawVehicle(ctx, state.vehicle, camera.pixelScale);
+  if (state.run) {
+    drawSimulatedBeams(ctx, state.run.sim);
+    drawJoints(ctx, simulatedJoints(state.run.sim), null, state.time);
+    drawVehicle(ctx, state.run.vehicle, camera.pixelScale);
+  } else {
+    drawBeams(ctx, state.bridge);
+    if (state.plan) drawBeamPlan(ctx, state.plan);
+    drawJoints(ctx, state.bridge.joints, state.activeJoint, state.time);
+  }
   if (state.pointer) drawPointer(ctx, state.pointer);
 }
 
@@ -243,26 +249,77 @@ function drawMaterialLine(
   a: Vec2,
   b: Vec2,
   material: MaterialId,
+  /** Replaces the beam's main colour, e.g. with its strain colour during a run. */
+  bodyColor?: string,
 ): void {
   switch (material) {
     case 'track':
       // Planks just below the rail line, matching the track on the banks.
-      stampLine(ctx, a, b, PALETTE.sleeper, -1, -2, 1, 2);
+      stampLine(ctx, a, b, bodyColor ?? PALETTE.sleeper, -1, -2, 1, 2);
       stampLine(ctx, a, b, PALETTE.rail, 0, -3, 1, 1);
       break;
     case 'wood':
-      stampLine(ctx, a, b, PALETTE.woodDark, -1, -1, 2, 2);
-      stampLine(ctx, a, b, PALETTE.wood, 0, -1, 1, 1);
+      stampLine(ctx, a, b, bodyColor ?? PALETTE.woodDark, -1, -1, 2, 2);
+      if (!bodyColor) stampLine(ctx, a, b, PALETTE.wood, 0, -1, 1, 1);
       break;
     case 'steel':
       stampLine(ctx, a, b, PALETTE.outline, -1, -1, 3, 3);
-      stampLine(ctx, a, b, PALETTE.steel, 0, 0, 1, 1);
+      stampLine(ctx, a, b, bodyColor ?? PALETTE.steel, 0, 0, 1, 1);
       break;
     case 'cable':
-      stampLine(ctx, a, b, PALETTE.cable, 0, 0, 1, 1);
+      stampLine(ctx, a, b, bodyColor ?? PALETTE.cable, 0, 0, 1, 1);
       break;
   }
 }
+
+/**
+ * During a run, beams are drawn where the simulation has moved them, coloured
+ * by how close they are to breaking. Broken halves keep their material colour.
+ */
+function drawSimulatedBeams(ctx: CanvasRenderingContext2D, sim: Simulation): void {
+  const intact = sim.constraints.filter((c) => !c.broken);
+  const supports = intact.filter((c) => c.material !== 'track');
+  const deck = intact.filter((c) => c.material === 'track');
+  for (const constraint of [...supports, ...deck]) {
+    const a = particleAt(sim, constraint.a).position;
+    const b = particleAt(sim, constraint.b).position;
+    const color = constraint.fragment
+      ? undefined
+      : strainColor(constraint.strain / MATERIALS[constraint.material].breakStrain);
+    drawMaterialLine(ctx, a, b, constraint.material, color);
+  }
+}
+
+/** The simulated joints, drawn like the editor's joints. Loose beam ends are not drawn. */
+function simulatedJoints(sim: Simulation): Joint[] {
+  return sim.particles.flatMap((particle) =>
+    particle.jointId === null
+      ? []
+      : [{ id: particle.jointId, position: particle.position, fixed: particle.inverseMass === 0 }],
+  );
+}
+
+/**
+ * Green when relaxed, yellow at half the break limit, red at the limit.
+ * `load` is strain divided by break strain; its sign (stretch/squeeze) is ignored.
+ */
+export function strainColor(load: number): string {
+  const t = Math.min(1, Math.abs(load));
+  const [from, to, local] =
+    t < 0.5
+      ? [STRAIN_COLORS.relaxed, STRAIN_COLORS.half, t / 0.5]
+      : [STRAIN_COLORS.half, STRAIN_COLORS.breaking, (t - 0.5) / 0.5];
+  const channel = (i: number) => Math.round(from[i]! + (to[i]! - from[i]!) * local);
+  const hex = (value: number) => value.toString(16).padStart(2, '0');
+  return `#${hex(channel(0))}${hex(channel(1))}${hex(channel(2))}`;
+}
+
+/** Strain colour stops as RGB, so they can be blended. */
+const STRAIN_COLORS = {
+  relaxed: [0x3c, 0xc8, 0x4a],
+  half: [0xff, 0xd8, 0x4a],
+  breaking: [0xe8, 0x30, 0x2c],
+} as const;
 
 /** Preview of the beam being dragged: white if it can be built, red if not. */
 function drawBeamPlan(ctx: CanvasRenderingContext2D, plan: BeamPlan): void {

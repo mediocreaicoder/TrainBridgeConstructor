@@ -37,6 +37,8 @@ claude.ai project "Train Bridge Cosntructor". Build it step by step, starting wi
     snapping, material table. Pure and unit tested.
   - `train.ts` / `renderVehicle.ts`: vehicle model (pure, tested) and its sprite. Runs use a
     fixed 1/120 s step (`Engine.update`).
+  - `physics.ts` / `run.ts`: XPBD bridge physics (mutates in place for speed) and one run
+    (physics + vehicle stepped together). Balancing values live in `materials.ts`.
 - Full plan and per-phase status: `docs/PLAN.md`.
 - `src/ui/`: React components. `GameCanvas.tsx` is the ONLY bridge between React and the
   engine: it creates the Engine in a useEffect and forwards events. React never runs per frame.
