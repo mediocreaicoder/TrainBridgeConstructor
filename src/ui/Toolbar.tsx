@@ -1,6 +1,8 @@
-import { MATERIAL_IDS, MATERIALS, type MaterialId } from '../game/materials';
+import { MATERIALS, type MaterialId } from '../game/materials';
 
 interface ToolbarProps {
+  /** The materials this level allows, in toolbar order. */
+  materials: readonly MaterialId[];
   material: MaterialId;
   /** True while the vehicle is running: editing is locked and Play becomes Stop. */
   running: boolean;
@@ -25,6 +27,7 @@ interface ToolbarProps {
  * each side (landscape).
  */
 export function Toolbar({
+  materials,
   material,
   running,
   canUndo,
@@ -44,7 +47,7 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <div className="toolbar-group" role="radiogroup" aria-label="Material">
-        {MATERIAL_IDS.map((id) => (
+        {materials.map((id) => (
           <button
             key={id}
             type="button"

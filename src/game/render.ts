@@ -2,7 +2,7 @@ import { beamEnds, type Beam, type Bridge, type Joint } from './bridge';
 import type { Camera } from './camera';
 import type { BeamPlan } from './editor';
 import { shakeOffset, type Droplet } from './effects';
-import type { Level } from './level';
+import type { Level, Pillar } from './level';
 import { MATERIALS, type MaterialId } from './materials';
 import { particleAt, type Simulation } from './physics';
 import { forEachLinePixel } from './pixelLine';
@@ -58,6 +58,9 @@ const PALETTE = {
   flagEnd: '#e8483c',
   gapHint: '#ffffff',
   pointer: '#ffffff',
+  stone: '#8a8f98',
+  stoneLight: '#b4b9c2',
+  stoneDark: '#5c616b',
 } as const;
 
 /** Draws one complete frame. Layers are painted back to front. */
@@ -94,6 +97,7 @@ export function renderFrame(
   drawSky(ctx, camera);
   if (level.waterY !== null) drawWater(ctx, camera, level.waterY, state.time);
   for (const polygon of level.terrain) drawTerrain(ctx, camera, polygon);
+  for (const pillar of level.pillars) drawPillar(ctx, pillar);
   drawTrack(ctx, camera, level);
   drawGapHint(ctx, level, state.time);
   drawFlag(ctx, { x: level.bridgeStart.x - 8, y: level.bridgeStart.y }, PALETTE.flagStart);
@@ -224,6 +228,25 @@ function drawTrackSegment(
   }
   ctx.fillStyle = PALETTE.rail;
   ctx.fillRect(fromX, groundY - 3, toX - fromX, 1);
+}
+
+/**
+ * A stone pillar: 5 units wide with a lit left edge, a shaded right edge and
+ * a wider cap. Drawn behind the track; it only holds anchors up.
+ */
+function drawPillar(ctx: CanvasRenderingContext2D, pillar: Pillar): void {
+  const left = Math.round(pillar.x) - 2;
+  const height = pillar.bottom - pillar.top;
+  ctx.fillStyle = PALETTE.stone;
+  ctx.fillRect(left, pillar.top, 5, height);
+  ctx.fillStyle = PALETTE.stoneLight;
+  ctx.fillRect(left, pillar.top, 1, height);
+  ctx.fillStyle = PALETTE.stoneDark;
+  ctx.fillRect(left + 4, pillar.top, 1, height);
+  // Joints between the stone blocks every 6 units.
+  for (let y = pillar.top + 6; y < pillar.bottom; y += 6) ctx.fillRect(left, y, 5, 1);
+  ctx.fillStyle = PALETTE.outline;
+  ctx.fillRect(left - 1, pillar.top - 1, 7, 2);
 }
 
 /** A pulsing dashed line showing where the bridge has to go. */

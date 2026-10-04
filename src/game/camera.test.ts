@@ -13,13 +13,17 @@ import type { Level } from './level';
 const level: Level = {
   id: 0,
   name: 'Test',
+  hint: '',
   width: 320,
   height: 180,
   terrain: [],
+  pillars: [],
   waterY: null,
   anchors: [],
   bridgeStart: { x: 0, y: 0 },
   bridgeEnd: { x: 320, y: 0 },
+  allowedMaterials: ['track'],
+  vehicle: 'handcar',
 };
 
 describe('fitCamera', () => {

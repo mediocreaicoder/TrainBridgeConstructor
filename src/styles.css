@@ -25,36 +25,6 @@ body,
   touch-action: none;
 }
 
-.hud {
-  position: fixed;
-  top: max(8px, env(safe-area-inset-top));
-  left: max(12px, env(safe-area-inset-left));
-  right: max(12px, env(safe-area-inset-right));
-  pointer-events: none;
-  font-family: 'Press Start 2P', monospace;
-  font-size: 10px;
-  line-height: 1.6;
-  color: #fff;
-  text-shadow: 2px 2px 0 #1c1c1c;
-}
-
-.hud-message {
-  margin-top: 4px;
-  color: #ffd84a;
-}
-
-.hud-rotate-hint {
-  display: none;
-  margin-top: 8px;
-  opacity: 0.8;
-}
-
-@media (orientation: portrait) {
-  .hud-rotate-hint {
-    display: block;
-  }
-}
-
 /* -------------------------------------------------------------------------
    Toolbar. Portrait: one bar along the bottom. Landscape: materials in a
    column on the left, actions on the right, in the spare landscape beside
@@ -235,4 +205,122 @@ body,
 
 .result-actions .toolbar-button {
   padding: 4px 10px;
+}
+
+/* -------------------------------------------------------------------------
+   The level list.
+   ------------------------------------------------------------------------- */
+
+.level-select {
+  width: min(280px, 100%);
+}
+
+.level-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Fits in landscape on a phone; scrolls if there are many levels. */
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.level-button {
+  width: 100%;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 8px;
+}
+
+.level-button[aria-current='true'] {
+  outline: 2px solid #ffd84a;
+  outline-offset: -2px;
+}
+
+.level-number {
+  width: 16px;
+  text-align: right;
+}
+
+.level-name {
+  flex: 1;
+  text-align: left;
+}
+
+.level-state {
+  color: #4caf3e;
+}
+
+.level-select > .toolbar-button {
+  margin: 0 auto;
+}
+
+/* -------------------------------------------------------------------------
+   HUD buttons (top right) and toasts (top centre).
+   ------------------------------------------------------------------------- */
+
+.hud {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  display: flex;
+  gap: 4px;
+}
+
+.hud-button {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 8px;
+}
+
+.toast {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  /* Leave room for the HUD buttons on the right. */
+  max-width: min(420px, calc(100% - 200px));
+  padding: 8px 12px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  line-height: 1.6;
+  text-align: center;
+  color: #fff;
+  background: rgba(28, 28, 28, 0.85);
+  border: 2px solid #1c1c1c;
+  box-shadow: inset 0 0 0 1px #4a5f86;
+  animation: toast-fade var(--toast-seconds, 4s) linear forwards;
+  cursor: pointer;
+}
+
+.toast-title {
+  margin-bottom: 4px;
+  color: #ffd84a;
+}
+
+/* Fade in quickly, stay, fade out at the very end. */
+@keyframes toast-fade {
+  0% {
+    opacity: 0;
+  }
+  5%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (orientation: portrait) {
+  .toast {
+    /* Below the HUD buttons, full width. */
+    top: calc(max(8px, env(safe-area-inset-top)) + 44px);
+    max-width: calc(100% - 32px);
+    width: max-content;
+  }
 }

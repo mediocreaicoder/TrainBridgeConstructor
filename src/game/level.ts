@@ -1,3 +1,5 @@
+import type { MaterialId } from './materials';
+import type { VehicleId } from './train';
 import type { Vec2 } from './types';
 
 /**
@@ -10,47 +12,73 @@ import type { Vec2 } from './types';
 export interface Level {
   id: number;
   name: string;
+  /** One line shown in the HUD while building: what this level is about. */
+  hint: string;
   width: number;
   height: number;
   /** Closed polygons, filled as solid ground. Top edges get grass. */
   terrain: Vec2[][];
+  /** Stone pillars drawn behind the track, to hold anchors above the deck. Not solid. */
+  pillars: Pillar[];
   /** y of the water surface, or null for a dry ravine. */
   waterY: number | null;
-  /** Fixed points in the terrain that the bridge can be attached to. */
+  /** Fixed points that the bridge can be attached to. */
   anchors: Vec2[];
   /** End of the existing track on the left: the bridge starts here. */
   bridgeStart: Vec2;
   /** Where the track continues on the right: the bridge must reach here. */
   bridgeEnd: Vec2;
+  /** Materials the player may build with, in toolbar order. */
+  allowedMaterials: MaterialId[];
+  vehicle: VehicleId;
 }
+
+/** A pillar standing on the ground at `x`, reaching up to `top`. */
+export interface Pillar {
+  x: number;
+  top: number;
+  /** Ground level at the pillar's foot. */
+  bottom: number;
+}
+
+const WIDTH = 320;
+const HEIGHT = 180;
 
 /** How far terrain extends outside the playfield, in world units. */
 const FAR = 1000;
+
+/**
+ * A left bank: flat ground at `edge.y` from far left to `edge`, then down the
+ * cliff face through `face` (top to bottom; the last point should be at y = FAR).
+ * Clockwise, like all terrain.
+ */
+function leftBank(edge: Vec2, face: Vec2[]): Vec2[] {
+  return [{ x: -FAR, y: edge.y }, edge, ...face, { x: -FAR, y: FAR }];
+}
+
+/** A right bank: the mirror of `leftBank`. `face` goes from top to bottom. */
+function rightBank(edge: Vec2, face: Vec2[]): Vec2[] {
+  return [edge, { x: WIDTH + FAR, y: edge.y }, { x: WIDTH + FAR, y: FAR }, ...[...face].reverse()];
+}
 
 export const LEVELS: readonly Level[] = [
   {
     id: 1,
     name: 'First Crossing',
-    width: 320,
-    height: 180,
+    hint: 'Drag from a joint to build. Triangles under the track make it strong',
+    width: WIDTH,
+    height: HEIGHT,
     terrain: [
-      // Left cliff. Points go clockwise, starting at the top-left.
-      [
-        { x: -FAR, y: 100 },
-        { x: 120, y: 100 },
+      leftBank({ x: 120, y: 100 }, [
         { x: 126, y: 130 },
         { x: 132, y: FAR },
-        { x: -FAR, y: FAR },
-      ],
-      // Right cliff.
-      [
-        { x: 200, y: 100 },
-        { x: 320 + FAR, y: 100 },
-        { x: 320 + FAR, y: FAR },
-        { x: 188, y: FAR },
+      ]),
+      rightBank({ x: 200, y: 100 }, [
         { x: 194, y: 130 },
-      ],
+        { x: 188, y: FAR },
+      ]),
     ],
+    pillars: [],
     waterY: 150,
     anchors: [
       { x: 120, y: 100 },
@@ -60,19 +88,176 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 120, y: 100 },
     bridgeEnd: { x: 200, y: 100 },
+    allowedMaterials: ['track', 'wood'],
+    vehicle: 'handcar',
+  },
+  {
+    id: 2,
+    name: 'Stepping Stone',
+    hint: 'Two short gaps. The rock in the middle can carry weight too',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 100, y: 100 }, [
+        { x: 104, y: 125 },
+        { x: 108, y: FAR },
+      ]),
+      // The island, clockwise from its top-left corner.
+      [
+        { x: 150, y: 100 },
+        { x: 170, y: 100 },
+        { x: 174, y: 125 },
+        { x: 178, y: FAR },
+        { x: 142, y: FAR },
+        { x: 146, y: 125 },
+      ],
+      rightBank({ x: 220, y: 100 }, [
+        { x: 216, y: 125 },
+        { x: 212, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: 150,
+    anchors: [
+      { x: 100, y: 100 },
+      { x: 104, y: 125 },
+      { x: 150, y: 100 },
+      { x: 146, y: 125 },
+      { x: 170, y: 100 },
+      { x: 174, y: 125 },
+      { x: 220, y: 100 },
+      { x: 216, y: 125 },
+    ],
+    bridgeStart: { x: 100, y: 100 },
+    bridgeEnd: { x: 220, y: 100 },
+    allowedMaterials: ['track', 'wood'],
+    vehicle: 'handcar',
+  },
+  {
+    id: 3,
+    name: 'Wide Gap',
+    hint: 'A wider gap. Prop the bridge up from the anchors on the cliffs',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 100, y: 100 }, [
+        { x: 106, y: 128 },
+        { x: 110, y: FAR },
+      ]),
+      rightBank({ x: 220, y: 100 }, [
+        { x: 214, y: 128 },
+        { x: 210, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: 155,
+    anchors: [
+      { x: 100, y: 100 },
+      { x: 106, y: 128 },
+      { x: 220, y: 100 },
+      { x: 214, y: 128 },
+    ],
+    bridgeStart: { x: 100, y: 100 },
+    bridgeEnd: { x: 220, y: 100 },
+    allowedMaterials: ['track', 'wood'],
+    vehicle: 'handcar',
+  },
+  {
+    id: 4,
+    name: 'From Below',
+    hint: 'The only help is deep down. Build up from the low anchors',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 100, y: 100 }, [
+        { x: 110, y: 120 },
+        { x: 120, y: 140 },
+        { x: 124, y: FAR },
+      ]),
+      rightBank({ x: 220, y: 100 }, [
+        { x: 210, y: 120 },
+        { x: 200, y: 140 },
+        { x: 196, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: null,
+    anchors: [
+      { x: 100, y: 100 },
+      { x: 120, y: 140 },
+      { x: 220, y: 100 },
+      { x: 200, y: 140 },
+    ],
+    bridgeStart: { x: 100, y: 100 },
+    bridgeEnd: { x: 220, y: 100 },
+    allowedMaterials: ['track', 'wood'],
+    vehicle: 'handcar',
+  },
+  {
+    id: 5,
+    name: 'Hanging Bridge',
+    hint: 'No ground to stand on. Hang the track from the pillars with cables',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 110, y: 100 }, [{ x: 112, y: FAR }]),
+      rightBank({ x: 210, y: 100 }, [{ x: 208, y: FAR }]),
+    ],
+    pillars: [
+      { x: 106, top: 55, bottom: 100 },
+      { x: 214, top: 55, bottom: 100 },
+    ],
+    waterY: 150,
+    anchors: [
+      { x: 110, y: 100 },
+      { x: 106, y: 55 },
+      { x: 210, y: 100 },
+      { x: 214, y: 55 },
+    ],
+    bridgeStart: { x: 110, y: 100 },
+    bridgeEnd: { x: 210, y: 100 },
+    allowedMaterials: ['track', 'cable'],
+    vehicle: 'handcar',
+  },
+  {
+    id: 6,
+    name: 'Long Haul',
+    hint: 'Too far for wood alone. Steel is strong and reaches far',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 90, y: 100 }, [
+        { x: 96, y: 140 },
+        { x: 100, y: FAR },
+      ]),
+      rightBank({ x: 230, y: 100 }, [
+        { x: 224, y: 140 },
+        { x: 220, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: 155,
+    anchors: [
+      { x: 90, y: 100 },
+      { x: 230, y: 100 },
+    ],
+    bridgeStart: { x: 90, y: 100 },
+    bridgeEnd: { x: 230, y: 100 },
+    allowedMaterials: ['track', 'wood', 'steel'],
+    vehicle: 'handcar',
   },
 ];
 
 /**
  * Reads the `?level=N` URL parameter (1-based, like the level ids shown to
- * the player) and returns a 0-based index into LEVELS. Missing or invalid
- * values fall back to the first level. Meant for jumping to a level while testing.
+ * the player) and returns a 0-based index into LEVELS, or null if it is
+ * missing or invalid. Meant for jumping straight to a level while testing.
  */
-export function levelIndexFromQuery(search: string, levelCount = LEVELS.length): number {
+export function levelIndexFromQuery(search: string, levelCount = LEVELS.length): number | null {
   const param = new URLSearchParams(search).get('level');
-  if (param === null || !/^\d+$/.test(param)) return 0;
+  if (param === null || !/^\d+$/.test(param)) return null;
   const index = Number(param) - 1;
-  return index >= 0 && index < levelCount ? index : 0;
+  return index >= 0 && index < levelCount ? index : null;
 }
 
 export function getLevel(index: number): Level {

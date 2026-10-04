@@ -1,60 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { addBeam, createBridge, type BeamTarget, type Bridge } from './bridge';
+import type { Bridge } from './bridge';
 import { getLevel } from './level';
 import type { MaterialId } from './materials';
 import { createSimulation, stepSimulation, type Simulation } from './physics';
 import { createRun, stepRun, type Run } from './run';
+import { BridgeBuilder } from './testing/bridgeBuilder';
 import { HANDCAR } from './train';
-import type { Vec2 } from './types';
 
 const level = getLevel(0);
 const STEP = 1 / 120;
 
-/**
- * Builds bridges on level 1 by position: a beam ends on the joint already at
- * that point, or creates a new joint there. Anchors: (120,100), (126,130),
- * (200,100) and (194,130).
- */
-class BridgeBuilder {
-  bridge: Bridge = createBridge(level.anchors);
-  private readonly jointAt = new Map(level.anchors.map((p, id) => [key(p), id]));
-
-  beam(from: Vec2, to: Vec2, material: MaterialId): this {
-    const fromId = this.jointAt.get(key(from));
-    if (fromId === undefined) throw new Error(`No joint at ${key(from)}`);
-    const existing = this.jointAt.get(key(to));
-    const target: BeamTarget =
-      existing === undefined
-        ? { kind: 'point', position: to }
-        : { kind: 'joint', jointId: existing };
-    this.bridge = addBeam(this.bridge, fromId, target, material);
-    if (existing === undefined) this.jointAt.set(key(to), this.bridge.joints.at(-1)!.id);
-    return this;
-  }
-
-  chain(points: Vec2[], material: MaterialId): this {
-    for (let i = 0; i + 1 < points.length; i++) this.beam(points[i]!, points[i + 1]!, material);
-    return this;
-  }
-}
-
-function key(p: Vec2): string {
-  return `${p.x},${p.y}`;
-}
-
 const DECK = [120, 140, 160, 180, 200].map((x) => ({ x, y: 100 }));
-/** Triangle apexes under the middle of each deck beam. */
-const APEXES = [130, 150, 170, 190].map((x) => ({ x, y: 110 }));
 
-const trackDeck = () => new BridgeBuilder().chain(DECK, 'track');
+const trackDeck = () => new BridgeBuilder(level).chain(DECK, 'track');
 
 /** Deck + wooden zigzag under it + wooden bottom chord between the apexes. */
 function warrenTruss(material: MaterialId = 'wood'): Bridge {
-  const builder = trackDeck();
-  for (let i = 0; i < APEXES.length; i++) {
-    builder.beam(DECK[i]!, APEXES[i]!, material).beam(APEXES[i]!, DECK[i + 1]!, material);
-  }
-  return builder.chain(APEXES, material).bridge;
+  return trackDeck().truss(DECK, 10, material).bridge;
 }
 
 function simulate(sim: Simulation, seconds: number): Simulation {
@@ -90,7 +52,7 @@ describe('createSimulation', () => {
 
 describe('stepSimulation', () => {
   it('holds a small steel triangle without moving it noticeably', () => {
-    const triangle = new BridgeBuilder()
+    const triangle = new BridgeBuilder(level)
       .beam({ x: 120, y: 100 }, { x: 140, y: 110 }, 'steel')
       .beam({ x: 126, y: 130 }, { x: 140, y: 110 }, 'steel').bridge;
     const sim = simulate(createSimulation(triangle), 5);
@@ -106,8 +68,10 @@ describe('stepSimulation', () => {
 
   it('lets a cable go slack instead of pushing', () => {
     // A joint straight above an anchor, held up only by a cable: it drops and hangs below.
-    const onCable = new BridgeBuilder().beam({ x: 120, y: 100 }, { x: 120, y: 80 }, 'cable').bridge;
-    const onWood = new BridgeBuilder().beam({ x: 120, y: 100 }, { x: 120, y: 80 }, 'wood').bridge;
+    const anchor = { x: 120, y: 100 };
+    const above = { x: 120, y: 80 };
+    const onCable = new BridgeBuilder(level).beam(anchor, above, 'cable').bridge;
+    const onWood = new BridgeBuilder(level).beam(anchor, above, 'wood').bridge;
     expect(simulate(createSimulation(onCable), 3).particles[4]!.position.y).toBeGreaterThan(115);
     expect(simulate(createSimulation(onWood), 3).particles[4]!.position.y).toBeLessThan(85);
   });

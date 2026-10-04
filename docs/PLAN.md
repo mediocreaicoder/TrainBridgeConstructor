@@ -37,7 +37,13 @@ What works:
 - Phase 4 is done: synthesised sound (bell, clacks, creaks, cracks, scream, splash, jingle),
   splash droplets, screen shake on breaks, result panel, mute toggle.
 
-What doesn't exist yet: more levels, more trains, terrain collisions, recorded sounds.
+- Phase 5 is done: six levels with hints and per-level materials, level list, unlocking in
+  order, progress saved, Next level. Every level is proven winnable by a test.
+
+- HUD text replaced by toasts (2026-10-04): the level name and hint fade out after 5 s, "?"
+  shows them again. Manifest and icons added for "Add to Home Screen" (no address bar).
+
+What doesn't exist yet: more trains, terrain collisions, recorded sounds, saved bridges.
 
 ### Files
 
@@ -46,7 +52,9 @@ What doesn't exist yet: more levels, more trains, terrain collisions, recorded s
 | `src/game/Engine.ts` | rAF loop, pointer input, resize, event emitter. `update(dt)` is the hook for simulation. |
 | `src/game/camera.ts` | `fitCamera()` and `cssToWorld()`. |
 | `src/game/render.ts` | `renderFrame()` plus one function per layer. `FrameState` holds per-frame data. |
-| `src/game/level.ts` | `Level` interface, `LEVELS`, `getLevel()`. |
+| `src/game/level.ts` | `Level` interface, the six `LEVELS`, `getLevel()`, `?level=N`. |
+| `src/game/progress.ts` | Unlock rule and starting level (pure). |
+| `src/game/testing/bridgeBuilder.ts` | Test helper: build bridges by position (`chain`, `truss`). |
 | `src/game/types.ts` | `Vec2`, `distance()`. |
 | `src/game/geometry.ts` | Distance to segment, point-in-polygon. |
 | `src/game/materials.ts` | `MATERIALS` table (balancing values), `MIN_BEAM_LENGTH`. |
@@ -62,7 +70,9 @@ What doesn't exist yet: more levels, more trains, terrain collisions, recorded s
 | `src/game/pixelLine.ts` | Bresenham line helper shared by the renderers. |
 | `src/game/debug.ts` | Dev-only `window.__game` (state, `addBeam`, `removeBeam`, `undo`, `redo`, `play`, `stop`, `stepSeconds`). |
 | `src/ui/GameCanvas.tsx` | Creates and destroys the Engine, forwards events, exposes `GameControls` (undo/redo) via ref. |
-| `src/ui/Hud.tsx` | Text overlay (`pointer-events: none`). |
+| `src/ui/Hud.tsx` | Top-right buttons: "Level N" (opens the level list) and "?" (shows the hint again). |
+| `src/ui/Toast.tsx` | Short messages that fade out by themselves (level name + hint, "Here comes the handcar!"). |
+| `src/ui/LevelSelect.tsx` | The level list (done / locked). |
 | `src/ui/ResultPanel.tsx` | "Made it!" / "Splash!" panel with Try again and Edit bridge. |
 | `src/ui/preferences.ts` | Mute setting in localStorage. |
 | `src/ui/Toolbar.tsx` | Material picker, undo, redo, play (disabled until phase 2). |
@@ -360,19 +370,37 @@ Note: on iPhone, the ring/silent switch mutes Web Audio.
 
 ## 7. Phase 5: Levels and progression
 
-- Extend `Level` with: `allowedMaterials`, `train` (type), and optionally `hint`.
-- Level select screen (React) and progress saved in `localStorage` (completed levels, wrapped in
-  try/catch).
-- Level ideas, in rising difficulty:
-  1. Short gap, anchors at deck height (current level).
-  2. Wider gap: needs supports under the deck.
-  3. Low anchors on the cliff faces: build a truss from below.
-  4. A gap that is too wide for wood: needs steel.
-  5. High anchor points above the deck: a suspension bridge with cables.
-  6. Two gaps with a small island in the middle.
-  7. Heavier train on a known gap.
-- Consider a small level editor in dev mode later (`?editor`) to draw terrain and anchors and
-  export JSON.
+Status: done (2026-10-04). Level 7 from the original list ("heavier train on a known gap") waits
+for phase 6, when there are more trains.
+
+Decisions:
+
+- Levels unlock in order: the first is open, each next one opens when the one before is won.
+  The game starts in the first level not yet won (or `?level=N`, which also skips the lock, for
+  testing). Progress is saved in `localStorage` (`ui/preferences.ts`).
+- A "Levels" button in the HUD opens the level list (done / locked). The result panel gets
+  "Next level" after a win. Switching level starts with an empty bridge (bridges are not saved).
+- Each level has a one-line `hint` shown in the HUD while building, `allowedMaterials` (the
+  toolbar only shows those; the engine also refuses others) and a `vehicle` (only `handcar` so far).
+- Anchors above the deck stand on stone **pillars**: scenery drawn behind the track, not solid.
+- Every level has a **reference solution and a naive bridge in `levels.test.ts`**: the solution
+  must be legal (lengths, materials, no joint inside terrain) and win with real physics; the
+  naive bridge must lose. Change a level or the balancing, and the tests tell you if a level
+  became impossible or trivial.
+
+### The levels
+
+| # | Name | Idea | Materials | Reference solution |
+| --- | --- | --- | --- | --- |
+| 1 | First Crossing | Short gap (80) | track, wood | Warren truss under the deck |
+| 2 | Stepping Stone | Two short gaps with a rock island | track, wood | A small truss in each gap |
+| 3 | Wide Gap | 120 wide, anchors on the cliff faces | track, wood | Truss + braced props from the low anchors |
+| 4 | From Below | 120 wide, only deep anchors (40 below), dry ravine | track, wood | Truss + a column from each deep anchor |
+| 5 | Hanging Bridge | No cliff anchors, anchors on pillars above the deck | track, cable | Deck hung from both pillars with cables |
+| 6 | Long Haul | 140 wide, no extra anchors | track, wood, steel | Steel truss (a wooden one breaks) |
+
+Ideas for later: a small level editor in dev mode (`?editor`) that exports level JSON; saving
+the player's bridge per level.
 
 ---
 
@@ -392,8 +420,10 @@ Defined in `src/game/trains.ts` as data: number of cars, mass per car, length, s
 
 ## 9. Phase 7: Polish
 
-- PWA: `manifest.webmanifest`, home screen icons (180×180 apple-touch-icon), and a simple
-  service worker for offline play (consider `vite-plugin-pwa`; ask first).
+- PWA: done: `public/manifest.webmanifest` (display fullscreen) and pixel-art icons in
+  `public/icons/` (180 apple-touch-icon, 192, 512). Safari can't hide its address bar from a
+  web page; added to the home screen, the game opens without it. Still open: a service worker
+  for offline play (consider `vite-plugin-pwa`; ask first).
 - Performance on iPhone: cache static layers (sky and terrain) in an offscreen canvas that is
   redrawn only on resize; today the dirt speckles are drawn every frame.
 - Pixel sprites for trains and materials, and parallax clouds or mountains in the background.

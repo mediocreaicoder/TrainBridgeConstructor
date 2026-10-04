@@ -30,6 +30,10 @@ export interface VehicleSpec {
 /** The first vehicle: a one-man handcar, small and slow. */
 export const HANDCAR: VehicleSpec = { wheelBase: 8, speed: 16, mass: 140 };
 
+/** Every vehicle a level can send across. More trains come in phase 6. */
+export type VehicleId = 'handcar';
+export const VEHICLES: Readonly<Record<VehicleId, VehicleSpec>> = { handcar: HANDCAR };
+
 export type VehicleStatus = 'rolling' | 'falling' | 'sunk';
 export type RunOutcome = 'arrived' | 'lost';
 

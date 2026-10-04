@@ -32,7 +32,8 @@ claude.ai project "Train Bridge Cosntructor". Build it step by step, starting wi
   - `Engine.ts`: rAF game loop, pointer input, resize. Emits `EngineEvent`s to the UI.
   - `camera.ts`: world units ↔ canvas/CSS pixels.
   - `render.ts`: draws a frame (sky, water, terrain, track, flags, beams, joints, drag preview).
-  - `level.ts`: level data (terrain polygons, anchors, bridgeStart/bridgeEnd).
+  - `level.ts`: level data (terrain, pillars, anchors, bridge ends, hint, materials, vehicle).
+    Every level has a reference solution in `levels.test.ts` that must win with real physics.
   - `bridge.ts` / `editor.ts` / `materials.ts`: immutable bridge model, undo/redo and drag
     snapping, material table. Pure and unit tested.
   - `train.ts` / `renderVehicle.ts`: vehicle model (pure, tested) and its sprite. Runs use a

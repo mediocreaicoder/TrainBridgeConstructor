@@ -39,7 +39,7 @@ import type { Level } from './level';
 import type { MaterialId } from './materials';
 import { renderFrame, type FrameState } from './render';
 import { createRun, stepRun } from './run';
-import { HANDCAR, type RunOutcome } from './train';
+import { VEHICLES, type RunOutcome } from './train';
 import { distance, type Vec2 } from './types';
 
 /** Editing the bridge, or watching the vehicle try to cross it. */
@@ -320,7 +320,7 @@ export class Engine {
    * selected material. Returns whether the beam was built.
    */
   tryAddBeam(fromJointId: number, target: BeamTarget, material = this.material): boolean {
-    if (this.mode !== 'edit') return false;
+    if (this.mode !== 'edit' || !this.level.allowedMaterials.includes(material)) return false;
     const bridge = this.history.present;
     const placement = canPlaceBeam(bridge, this.level.terrain, fromJointId, target, material);
     if (!placement.ok) return false;
@@ -393,7 +393,7 @@ export class Engine {
     if (this.mode !== 'run' || !run) return;
 
     const before = summarizeRun(run);
-    stepRun(run, this.level, HANDCAR, SIMULATION_STEP);
+    stepRun(run, this.level, VEHICLES[this.level.vehicle], SIMULATION_STEP);
     for (const cue of soundCues(before, summarizeRun(run), this.level)) this.handleCue(cue);
 
     const next = run.vehicle;

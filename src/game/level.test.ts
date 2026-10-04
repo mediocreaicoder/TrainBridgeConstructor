@@ -7,14 +7,14 @@ describe('levelIndexFromQuery', () => {
     expect(levelIndexFromQuery('?level=3', 3)).toBe(2);
   });
 
-  it('falls back to the first level when the parameter is missing', () => {
-    expect(levelIndexFromQuery('', 3)).toBe(0);
-    expect(levelIndexFromQuery('?other=2', 3)).toBe(0);
+  it('gives null when the parameter is missing', () => {
+    expect(levelIndexFromQuery('', 3)).toBeNull();
+    expect(levelIndexFromQuery('?other=2', 3)).toBeNull();
   });
 
-  it('falls back to the first level for out-of-range or invalid values', () => {
+  it('gives null for out-of-range or invalid values', () => {
     for (const value of ['0', '4', '-1', '1.5', 'abc', '']) {
-      expect(levelIndexFromQuery(`?level=${value}`, 3)).toBe(0);
+      expect(levelIndexFromQuery(`?level=${value}`, 3)).toBeNull();
     }
   });
 });
