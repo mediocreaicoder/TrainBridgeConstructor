@@ -9,6 +9,8 @@ export interface GameControls {
   redo(): void;
   zoomIn(): void;
   zoomOut(): void;
+  play(): void;
+  stop(): void;
 }
 
 interface GameCanvasProps {
@@ -63,6 +65,8 @@ export function GameCanvas({ level, material, onEvent, ref }: GameCanvasProps) {
       redo: () => engineRef.current?.redo(),
       zoomIn: () => engineRef.current?.zoomIn(),
       zoomOut: () => engineRef.current?.zoomOut(),
+      play: () => engineRef.current?.play(),
+      stop: () => engineRef.current?.stop(),
     }),
     [],
   );

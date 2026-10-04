@@ -3,6 +3,9 @@ import type { Camera } from './camera';
 import type { BeamPlan } from './editor';
 import type { Level } from './level';
 import type { MaterialId } from './materials';
+import { forEachLinePixel } from './pixelLine';
+import { drawVehicle } from './renderVehicle';
+import type { Vehicle } from './train';
 import type { Vec2 } from './types';
 
 /** Everything that changes from frame to frame and affects drawing. */
@@ -17,6 +20,8 @@ export interface FrameState {
   pointer: Vec2 | null;
   /** The beam being dragged, drawn as a preview. */
   plan: BeamPlan | null;
+  /** The vehicle during a run, or null while editing. */
+  vehicle: Vehicle | null;
 }
 
 /** A small, limited palette keeps the retro look consistent. */
@@ -81,6 +86,7 @@ export function renderFrame(
   drawBeams(ctx, state.bridge);
   if (state.plan) drawBeamPlan(ctx, state.plan);
   drawJoints(ctx, state.bridge.joints, state.activeJoint, state.time);
+  if (state.vehicle) drawVehicle(ctx, state.vehicle, camera.pixelScale);
   if (state.pointer) drawPointer(ctx, state.pointer);
 }
 
@@ -346,34 +352,6 @@ function stampLine(
 ): void {
   ctx.fillStyle = color;
   forEachLinePixel(a, b, (x, y) => ctx.fillRect(x + offsetX, y + offsetY, width, height));
-}
-
-/** Bresenham's line algorithm: visits each pixel on the line between two points once. */
-function forEachLinePixel(a: Vec2, b: Vec2, visit: (x: number, y: number) => void): void {
-  let x = Math.round(a.x);
-  let y = Math.round(a.y);
-  const endX = Math.round(b.x);
-  const endY = Math.round(b.y);
-  const dx = Math.abs(endX - x);
-  const dy = -Math.abs(endY - y);
-  const stepX = x < endX ? 1 : -1;
-  const stepY = y < endY ? 1 : -1;
-  // The error term tracks how far the drawn pixels are from the ideal line.
-  let error = dx + dy;
-
-  for (;;) {
-    visit(x, y);
-    if (x === endX && y === endY) return;
-    const doubled = 2 * error;
-    if (doubled >= dy) {
-      error += dy;
-      x += stepX;
-    }
-    if (doubled <= dx) {
-      error += dx;
-      y += stepY;
-    }
-  }
 }
 
 function tracePolygon(ctx: CanvasRenderingContext2D, polygon: Vec2[]): void {

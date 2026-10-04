@@ -7,8 +7,7 @@ import type { Vec2 } from './types';
 /**
  * Dev-only handle on the running game, exposed as `window.__game`.
  * Lets the dev console and scripted browser tests inspect and drive the engine.
- * Commands such as `play` and `stepSeconds(n)` will be added here as the
- * features they drive are built.
+ * More commands are added here as the features they drive are built.
  */
 export interface GameDebugApi {
   engine: Engine;
@@ -24,6 +23,11 @@ export interface GameDebugApi {
   removeBeam(beamId: number): boolean;
   undo(): void;
   redo(): void;
+  /** Starts a run (the vehicle rolls in), or ends it and goes back to editing. */
+  play(): void;
+  stop(): void;
+  /** Simulates the run `seconds` ahead immediately, without waiting for frames. */
+  stepSeconds(seconds: number): void;
 }
 
 declare global {
@@ -52,6 +56,9 @@ export function installDebugHook(engine: Engine): () => void {
     removeBeam: (beamId) => engine.removeBeam(beamId),
     undo: () => engine.undo(),
     redo: () => engine.redo(),
+    play: () => engine.play(),
+    stop: () => engine.stop(),
+    stepSeconds: (seconds) => engine.stepSeconds(seconds),
   };
   window.__game = api;
 

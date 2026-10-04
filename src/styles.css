@@ -161,3 +161,18 @@ body,
     flex-direction: column;
   }
 }
+
+/* Play is green and Stop is red, so the current mode is obvious at a glance. */
+.toolbar-play {
+  background: #2f7d2a;
+  box-shadow:
+    inset -2px -2px 0 #1d5419,
+    inset 2px 2px 0 #4caf3e;
+}
+
+.toolbar-stop {
+  background: #a8302a;
+  box-shadow:
+    inset -2px -2px 0 #6e1d19,
+    inset 2px 2px 0 #e8483c;
+}

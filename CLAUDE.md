@@ -35,6 +35,8 @@ claude.ai project "Train Bridge Cosntructor". Build it step by step, starting wi
   - `level.ts`: level data (terrain polygons, anchors, bridgeStart/bridgeEnd).
   - `bridge.ts` / `editor.ts` / `materials.ts`: immutable bridge model, undo/redo and drag
     snapping, material table. Pure and unit tested.
+  - `train.ts` / `renderVehicle.ts`: vehicle model (pure, tested) and its sprite. Runs use a
+    fixed 1/120 s step (`Engine.update`).
 - Full plan and per-phase status: `docs/PLAN.md`.
 - `src/ui/`: React components. `GameCanvas.tsx` is the ONLY bridge between React and the
   engine: it creates the Engine in a useEffect and forwards events. React never runs per frame.

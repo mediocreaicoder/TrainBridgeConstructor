@@ -35,12 +35,25 @@ import {
 import type { Level } from './level';
 import type { MaterialId } from './materials';
 import { renderFrame, type FrameState } from './render';
+import {
+  buildTrack,
+  createVehicle,
+  HANDCAR,
+  stepVehicle,
+  type RunOutcome,
+  type TrackSegment,
+} from './train';
 import { distance, type Vec2 } from './types';
+
+/** Editing the bridge, or watching the vehicle try to cross it. */
+export type EngineMode = 'edit' | 'run';
 
 /** Events the engine reports to the UI. */
 export type EngineEvent =
   | { type: 'historyChanged'; canUndo: boolean; canRedo: boolean }
-  | { type: 'zoomChanged'; canZoomIn: boolean; canZoomOut: boolean };
+  | { type: 'zoomChanged'; canZoomIn: boolean; canZoomOut: boolean }
+  | { type: 'modeChanged'; mode: EngineMode }
+  | { type: 'runFinished'; outcome: RunOutcome };
 
 export type EngineListener = (event: EngineEvent) => void;
 
@@ -79,6 +92,12 @@ const WHEEL_ZOOM_SPEED = 0.002;
 
 /** Caps the time step so a backgrounded tab doesn't cause one huge jump. */
 const MAX_FRAME_SECONDS = 0.1;
+
+/**
+ * The simulation always advances in steps of this size, however fast the
+ * screen refreshes, so a run plays out the same on every device.
+ */
+const SIMULATION_STEP = 1 / 120;
 
 /**
  * What the finger(s) on the screen are doing:
@@ -136,6 +155,11 @@ export class Engine {
   private camera: Camera;
   private history: History;
   private material: MaterialId = 'track';
+  private mode: EngineMode = 'edit';
+  /** The track the vehicle drives on, built from the bridge when a run starts. */
+  private track: TrackSegment[] = [];
+  /** Time not yet simulated, carried over to the next frame. */
+  private unsimulatedSeconds = 0;
   private state: FrameState;
   /** Fingers / mouse buttons currently down, in CSS pixels relative to the canvas. */
   private readonly pointers = new Map<number, Vec2>();
@@ -163,6 +187,7 @@ export class Engine {
       activeJoint: null,
       pointer: null,
       plan: null,
+      vehicle: null,
     };
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
 
@@ -227,11 +252,37 @@ export class Engine {
   }
 
   undo(): void {
-    this.setHistory(undo(this.history));
+    if (this.mode === 'edit') this.setHistory(undo(this.history));
   }
 
   redo(): void {
-    this.setHistory(redo(this.history));
+    if (this.mode === 'edit') this.setHistory(redo(this.history));
+  }
+
+  /** Starts a run: the vehicle rolls in from the left. The bridge can't be edited meanwhile. */
+  play(): void {
+    if (this.mode === 'run') return;
+    this.track = buildTrack(this.level, this.history.present);
+    this.state.vehicle = createVehicle(this.level);
+    this.unsimulatedSeconds = 0;
+    this.cancelBuildGesture();
+    this.setMode('run');
+  }
+
+  /** Ends the run and goes back to editing the (unchanged) bridge. */
+  stop(): void {
+    if (this.mode === 'edit') return;
+    this.state.vehicle = null;
+    this.setMode('edit');
+  }
+
+  /**
+   * Runs the simulation `seconds` ahead right away, in normal steps. For tests
+   * and the debug hook; the game loop uses `update`.
+   */
+  stepSeconds(seconds: number): void {
+    const steps = Math.round(seconds / SIMULATION_STEP);
+    for (let i = 0; i < steps; i++) this.simulateStep();
   }
 
   zoomIn(): void {
@@ -247,6 +298,7 @@ export class Engine {
    * selected material. Returns whether the beam was built.
    */
   tryAddBeam(fromJointId: number, target: BeamTarget, material = this.material): boolean {
+    if (this.mode !== 'edit') return false;
     const bridge = this.history.present;
     const placement = canPlaceBeam(bridge, this.level.terrain, fromJointId, target, material);
     if (!placement.ok) return false;
@@ -256,6 +308,7 @@ export class Engine {
 
   /** Removes a beam. Returns false if there was no such beam. */
   removeBeam(beamId: number): boolean {
+    if (this.mode !== 'edit') return false;
     const before = this.history.present;
     this.setHistory(commit(this.history, removeBeam(before, beamId)));
     return this.history.present !== before;
@@ -273,6 +326,11 @@ export class Engine {
     this.emit({ type: 'historyChanged', canUndo: canUndo(history), canRedo: canRedo(history) });
   }
 
+  private setMode(mode: EngineMode): void {
+    this.mode = mode;
+    this.emit({ type: 'modeChanged', mode });
+  }
+
   // -------------------------------------------------------------------------
   // Game loop
   // -------------------------------------------------------------------------
@@ -288,9 +346,31 @@ export class Engine {
     this.frameId = requestAnimationFrame(this.tick);
   };
 
-  /** Advances the simulation. Bridge physics and the train will live here. */
+  /**
+   * Advances animations by `dt`, and the run in whole simulation steps. Any
+   * time left over is carried to the next frame (a fixed-step accumulator).
+   */
   private update(dt: number): void {
     this.state.time += dt;
+    if (this.mode !== 'run') return;
+
+    this.unsimulatedSeconds += dt;
+    while (this.unsimulatedSeconds >= SIMULATION_STEP) {
+      this.simulateStep();
+      this.unsimulatedSeconds -= SIMULATION_STEP;
+    }
+  }
+
+  /** One simulation step. Reports the outcome the moment the run is decided. */
+  private simulateStep(): void {
+    const vehicle = this.state.vehicle;
+    if (this.mode !== 'run' || !vehicle) return;
+
+    const next = stepVehicle(vehicle, HANDCAR, this.track, this.level, SIMULATION_STEP);
+    this.state.vehicle = next;
+    if (next.outcome && !vehicle.outcome) {
+      this.emit({ type: 'runFinished', outcome: next.outcome });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -373,7 +453,9 @@ export class Engine {
     const startCss = this.toCss(event);
     const start = this.cssToWorldPoint(startCss);
     const grabRadius = this.cssToWorldRadius(JOINT_GRAB_CSS_PX, JOINT_GRAB_MAX_RADIUS);
-    const fromJoint = findJointNear(this.history.present, start, grabRadius);
+    // During a run nothing can be built, so every one-finger drag pans.
+    const fromJoint =
+      this.mode === 'edit' ? findJointNear(this.history.present, start, grabRadius) : null;
 
     this.gesture = fromJoint
       ? {
@@ -500,8 +582,16 @@ export class Engine {
     this.state.activeJoint = null;
   }
 
+  /** Drops a beam being dragged (e.g. when Play is pressed mid-drag). */
+  private cancelBuildGesture(): void {
+    if (this.gesture?.kind !== 'build') return;
+    this.clearGestureVisuals();
+    this.gesture = { kind: 'ignore' };
+  }
+
   /** A single tap does nothing on its own; a quick second tap on a beam removes it. */
   private handleTap(tap: Tap): void {
+    if (this.mode !== 'edit') return;
     const previous = this.lastTap;
     const isDoubleTap =
       previous !== null &&

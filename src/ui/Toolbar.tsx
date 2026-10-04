@@ -2,6 +2,8 @@ import { MATERIAL_IDS, MATERIALS, type MaterialId } from '../game/materials';
 
 interface ToolbarProps {
   material: MaterialId;
+  /** True while the vehicle is running: editing is locked and Play becomes Stop. */
+  running: boolean;
   canUndo: boolean;
   canRedo: boolean;
   canZoomIn: boolean;
@@ -11,15 +13,18 @@ interface ToolbarProps {
   onRedo: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  onPlay: () => void;
+  onStop: () => void;
 }
 
 /**
- * Material picker plus undo, redo, zoom and play. Two groups, so CSS can
+ * Material picker plus undo, redo, zoom and play/stop. Two groups, so CSS can
  * stack them along the bottom (portrait) or put them in columns on each side
  * (landscape).
  */
 export function Toolbar({
   material,
+  running,
   canUndo,
   canRedo,
   canZoomIn,
@@ -29,6 +34,8 @@ export function Toolbar({
   onRedo,
   onZoomIn,
   onZoomOut,
+  onPlay,
+  onStop,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -40,6 +47,7 @@ export function Toolbar({
             role="radio"
             aria-checked={id === material}
             className={`toolbar-button material-${id}`}
+            disabled={running}
             onClick={() => onMaterialChange(id)}
           >
             <span className="material-swatch" />
@@ -48,10 +56,20 @@ export function Toolbar({
         ))}
       </div>
       <div className="toolbar-group">
-        <button type="button" className="toolbar-button" disabled={!canUndo} onClick={onUndo}>
+        <button
+          type="button"
+          className="toolbar-button"
+          disabled={running || !canUndo}
+          onClick={onUndo}
+        >
           Undo
         </button>
-        <button type="button" className="toolbar-button" disabled={!canRedo} onClick={onRedo}>
+        <button
+          type="button"
+          className="toolbar-button"
+          disabled={running || !canRedo}
+          onClick={onRedo}
+        >
           Redo
         </button>
         <button
@@ -72,9 +90,12 @@ export function Toolbar({
         >
           +
         </button>
-        {/* Starts the simulation once physics exists (phase 2). */}
-        <button type="button" className="toolbar-button" disabled>
-          Play
+        <button
+          type="button"
+          className={`toolbar-button ${running ? 'toolbar-stop' : 'toolbar-play'}`}
+          onClick={running ? onStop : onPlay}
+        >
+          {running ? 'Stop' : 'Play'}
         </button>
       </div>
     </div>

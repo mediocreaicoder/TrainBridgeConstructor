@@ -1,17 +1,25 @@
 import { useCallback, useRef, useState } from 'react';
-import type { EngineEvent } from './game/Engine';
+import type { EngineEvent, EngineMode } from './game/Engine';
 import { getLevel, levelIndexFromQuery } from './game/level';
 import type { MaterialId } from './game/materials';
+import type { RunOutcome } from './game/train';
 import { GameCanvas, type GameControls } from './ui/GameCanvas';
 import { Hud } from './ui/Hud';
 import { Toolbar } from './ui/Toolbar';
 
-const HINT = 'Drag from a joint to build. Pinch to zoom. Double-tap a beam to remove it';
+const EDIT_HINT = 'Drag from a joint to build. Pinch to zoom. Double-tap a beam to remove it';
+const RUN_MESSAGES: Record<RunOutcome | 'running', string> = {
+  running: 'Here comes the handcar!',
+  arrived: 'The handcar made it across!',
+  lost: 'Splash! Press Stop and fix the bridge',
+};
 
 export function App() {
   const [levelIndex] = useState(() => levelIndexFromQuery(window.location.search));
   const level = getLevel(levelIndex);
   const [material, setMaterial] = useState<MaterialId>('track');
+  const [mode, setMode] = useState<EngineMode>('edit');
+  const [outcome, setOutcome] = useState<RunOutcome | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
   const [zoom, setZoom] = useState({ canZoomIn: true, canZoomOut: false });
   const gameRef = useRef<GameControls>(null);
@@ -24,15 +32,25 @@ export function App() {
       case 'zoomChanged':
         setZoom({ canZoomIn: event.canZoomIn, canZoomOut: event.canZoomOut });
         break;
+      case 'modeChanged':
+        setMode(event.mode);
+        setOutcome(null);
+        break;
+      case 'runFinished':
+        setOutcome(event.outcome);
+        break;
     }
   }, []);
+
+  const message = mode === 'edit' ? EDIT_HINT : RUN_MESSAGES[outcome ?? 'running'];
 
   return (
     <>
       <GameCanvas ref={gameRef} level={level} material={material} onEvent={handleEngineEvent} />
-      <Hud level={level} message={HINT} />
+      <Hud level={level} message={message} />
       <Toolbar
         material={material}
+        running={mode === 'run'}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
         canZoomIn={zoom.canZoomIn}
@@ -42,6 +60,8 @@ export function App() {
         onRedo={() => gameRef.current?.redo()}
         onZoomIn={() => gameRef.current?.zoomIn()}
         onZoomOut={() => gameRef.current?.zoomOut()}
+        onPlay={() => gameRef.current?.play()}
+        onStop={() => gameRef.current?.stop()}
       />
     </>
   );

@@ -28,7 +28,10 @@ What works:
   the view can't leave the zoom-1 area. Zooming in makes pixels bigger (canvas `pixelScale`).
   Touch radii (grab, snap, double-tap) are in CSS px, so building is more precise when zoomed in.
 
-What doesn't exist yet: physics, trains, sound, more levels.
+- Phase 2 is done: Play/Stop, a one-man handcar rolls across a rigid bridge, arrives or falls
+  into the water. Fixed 1/120 s simulation step.
+
+What doesn't exist yet: physics, sound, more levels, more trains.
 
 ### Files
 
@@ -43,7 +46,10 @@ What doesn't exist yet: physics, trains, sound, more levels.
 | `src/game/materials.ts` | `MATERIALS` table (balancing values), `MIN_BEAM_LENGTH`. |
 | `src/game/bridge.ts` | Immutable `Bridge` model: `addBeam`, `removeBeam`, `canPlaceBeam`, hit tests. |
 | `src/game/editor.ts` | Undo/redo `History`, and `planBeam()` (snapping + validation while dragging). |
-| `src/game/debug.ts` | Dev-only `window.__game` (state, `addBeam`, `removeBeam`, `undo`, `redo`). |
+| `src/game/train.ts` | Vehicle model: `buildTrack`, `createVehicle`, `stepVehicle` (roll, fall, outcome). |
+| `src/game/renderVehicle.ts` | Draws the handcar sprite (animated, rotated with nearest-neighbour). |
+| `src/game/pixelLine.ts` | Bresenham line helper shared by the renderers. |
+| `src/game/debug.ts` | Dev-only `window.__game` (state, `addBeam`, `removeBeam`, `undo`, `redo`, `play`, `stop`, `stepSeconds`). |
 | `src/ui/GameCanvas.tsx` | Creates and destroys the Engine, forwards events, exposes `GameControls` (undo/redo) via ref. |
 | `src/ui/Hud.tsx` | Text overlay (`pointer-events: none`). |
 | `src/ui/Toolbar.tsx` | Material picker, undo, redo, play (disabled until phase 2). |
@@ -166,10 +172,65 @@ nearest apex or joint, and the apexes are drawn as small yellow diamonds.
 
 ---
 
-## 4. Phase 2: Physics and strain
+## 4. Phase 2: Train on a rigid bridge (handcar)
 
-Goal: press Play, the bridge sags under its own weight, beams show strain in colour, and
-overloaded beams break. Abort restores the editor.
+Goal: press Play and a vehicle rolls from the left bank, across the bridge, to the goal, or falls
+into the gap. The bridge doesn't bend yet (that is phase 3), so this phase is about the vehicle,
+following the track, winning and losing, and the play/stop flow.
+
+Decisions (2026-10-04):
+
+- Trains come before physics. The bridge is rigid in this phase.
+- The first vehicle is an animated **one-man handcar** (Norwegian: dressin): a small platform on
+  two wheels with a man pumping a see-saw lever. More trains come in phase 6.
+- Only **track** beams carry the vehicle. Wood, steel and cable are supports only.
+
+### Model: `src/game/train.ts` (pure, tested)
+
+- `buildTrack(level, bridge)`: the drivable surface as line segments: the rails on both banks
+  plus every track beam. Track beams steeper than 45° are not drivable.
+- `Vehicle`: position (the point between the axles, on the rail), tilt angle, distance rolled
+  (drives the animation), velocity and spin (used while falling), `status: 'rolling' | 'falling'`
+  and `outcome: null | 'arrived' | 'lost'`.
+- Rolling: constant speed along x. Each wheel finds the track segment under it, near its current
+  height (so a beam far above or below doesn't count, and a step of more than a couple of units
+  is a gap). The tilt follows the two wheels. A wheel over a gap hangs on the car's line.
+- Falling: when the point between the axles has no track under it, the handcar tips off and
+  falls with gravity and spin. While falling it doesn't collide with anything (yet).
+- Win: the vehicle reaches `bridgeEnd.x + 24` while rolling. It keeps rolling afterwards.
+- Lose: it falls into the water (or below the playfield when there is no water).
+- Fixed time step of 1/120 s with an accumulator in `Engine.update`, so runs are deterministic
+  (and ready for the physics in phase 3).
+
+### Modes and UI
+
+- `mode: 'edit' | 'run'` in Engine. Play creates the vehicle; Stop removes it and returns to the
+  editor. The bridge is never changed by a run.
+- During a run: building, undo/redo and material buttons are disabled; pinch, pan and zoom still
+  work. The Play button becomes Stop.
+- Events: `{ type: 'modeChanged', mode }` and `{ type: 'runFinished', outcome }`. The HUD shows the
+  result. (A proper result panel and sounds come in phase 4.)
+- Debug hook: `play()`, `stop()`, `stepSeconds(n)`.
+
+### Graphics
+
+- The handcar is drawn in code into a small offscreen sprite canvas each frame (wheels with
+  turning spokes, platform, see-saw lever, the man pumping in time with the wheels), then drawn
+  rotated by the tilt with nearest-neighbour scaling so it stays pixel-sharp.
+
+### Tests
+
+`train.test.ts`: rolls along a flat bank; crosses a complete deck and arrives; falls into an
+empty gap; falls where the deck has a hole; follows a sloped track beam; ignores wood beams.
+
+Done when: level 1 can be won with a sensible bridge and lost with a bad one.
+
+---
+
+## 5. Phase 3: Physics and strain
+
+Goal: press Play, the bridge sags under its own weight and under the vehicle, beams show strain in
+colour, and overloaded beams break. Stop restores the editor.
 
 ### Method: Verlet integration with position-based distance constraints
 
@@ -178,8 +239,7 @@ This is simple, stable and readable, and well suited to this genre.
 - `src/game/physics.ts`: `createSimulation(bridge)` returns a `Simulation` with point masses
   (`pos`, `prevPos`, `invMass`, where 0 means fixed) and constraints (`a`, `b`, `restLength`,
   `material`, `broken`).
-- Fixed time step: `1/120` s with an accumulator in `Engine.update` (deterministic, and the same
-  result on every device), capped at about 8 steps per frame.
+- Uses the fixed 1/120 s step from phase 2, capped at about 8 steps per frame.
 - Per step: gravity → Verlet → N iterations (start at 20) of constraint solving → fixed joints
   back in place.
 - Mass per joint = half the mass of each connected beam (from the materials table).
@@ -191,16 +251,17 @@ This is simple, stable and readable, and well suited to this genre.
   ignored. For now, the beam is drawn as two halves that fall (later: real fragments).
 - Fall-out: masses that fall below `waterY` (or the bottom of the screen) stop being simulated.
 
+### Vehicle load
+
+- The vehicle's track is now the simulated (moving) track beams instead of the rigid bridge.
+- Each wheel's weight is applied as a force on its beam's two joints, split by where the wheel is
+  along the beam (lever principle). This is what makes the bridge sag under the vehicle.
+- Broken track beams stop being drivable.
+
 ### Strain colour
 
 Linear from green (0) through yellow (50 % of the break limit) to red (100 %). Draw the beam in
-the strain colour in sim mode, and in the material colour in edit mode.
-
-### Modes
-
-- `mode: 'edit' | 'simulate'` in Engine. Play builds a simulation from the editor's `present`;
-  Abort throws the simulation away. The bridge itself is never changed by the simulation.
-- Events: `{ type: 'modeChanged', mode }`, `{ type: 'beamBroke', beamId }`.
+the strain colour in run mode, and in the material colour in edit mode.
 
 ### Tests
 
@@ -208,32 +269,9 @@ the strain colour in sim mode, and in the material colour in edit mode.
 - A long, unsupported deck of wood breaks.
 - A cable under compression doesn't push.
 - Determinism: the same bridge gives identical positions after N steps.
+- The handcar makes a sensible deck sag, and a weak deck breaks under it.
 
 Done when: the bridge visibly sags, the colours make sense, and an obviously bad bridge collapses.
-
----
-
-## 5. Phase 3: Train
-
-Goal: a simple locomotive drives from the left, across the bridge, and to the goal, or falls.
-
-- `src/game/train.ts`. The simplest model that still loads the bridge correctly:
-  - The train is a chain of cars. Each car has two wheels (axles) at fixed distances, and the
-    train moves at a constant target speed along x.
-  - For each wheel, find the track surface under it: static rails on land (the level's banks),
-    or a non-broken **track** beam in the simulation. The wheel's y is interpolated along the
-    beam.
-  - The wheel's weight is applied as a force on the beam's two joints, split by where the wheel
-    is along the beam (lever principle). This is what makes the bridge sag under the train.
-  - If there is no track under a wheel, the car falls freely (simple ballistics plus rotation)
-    and the run is lost.
-- Win: the front of the train reaches `bridgeEnd.x + some margin`, and every car is on track.
-- Lose: a car falls below `waterY` or out of the screen.
-- Events: `{ type: 'trainArrived' }`, `{ type: 'trainLost' }`.
-- Graphics: the locomotive as a small pixel sprite (draw it in code with `fillRect` first, use
-  sprite sheets later), with wheel animation and smoke puffs.
-
-Done when: level 1 can be won with a sensible bridge and lost with a bad one.
 
 ---
 
@@ -275,6 +313,7 @@ Defined in `src/game/trains.ts` as data: number of cars, mass per car, length, s
 
 | Train | Cars | Mass | Notes |
 | --- | --- | --- | --- |
+| One-man handcar | 1 | very low | First vehicle (phase 2). |
 | Simple locomotive | 1 | low | Levels 1–3. |
 | Passenger train | 3–4 | medium | Screams when it falls. |
 | Goods train | 5–6 | high | Long load spread out over the bridge. |
