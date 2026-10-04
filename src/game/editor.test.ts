@@ -9,6 +9,7 @@ import {
   planBeam,
   redo,
   snapToGridWithin,
+  triangleApexes,
   undo,
 } from './editor';
 import { getLevel } from './level';
@@ -133,5 +134,70 @@ describe('planBeam', () => {
   it('marks an end inside the terrain as invalid', () => {
     const plan = planBeam(bridge, level.terrain, LEFT_TOP, { x: 110, y: 112 }, 'track');
     expect(plan.placement).toEqual({ ok: false, problem: 'insideTerrain' });
+  });
+});
+
+describe('triangle snapping', () => {
+  /** Level 1 with a track deck: joints at x = 120 (anchor 0), 140, 160, 180, 200 (anchor 2). */
+  function deck(): Bridge {
+    let bridge = createBridge(level.anchors);
+    let from = LEFT_TOP;
+    for (const x of [140, 160, 180]) {
+      bridge = addBeam(bridge, from, { kind: 'point', position: { x, y: 100 } }, 'track');
+      from = bridge.joints.at(-1)!.id;
+    }
+    return addBeam(bridge, from, { kind: 'joint', jointId: 2 }, 'track');
+  }
+
+  it('puts an apex above and below the middle of each track beam, at 45°', () => {
+    const apexes = triangleApexes(deck(), level.terrain);
+    expect(apexes).toHaveLength(8);
+    expect(apexes).toContainEqual({ x: 130, y: 90 });
+    expect(apexes).toContainEqual({ x: 130, y: 110 });
+    expect(apexes).toContainEqual({ x: 190, y: 110 });
+  });
+
+  it('works for a sloped track beam too', () => {
+    const sloped = addBeam(
+      createBridge(level.anchors),
+      LEFT_TOP,
+      { kind: 'point', position: { x: 136, y: 88 } },
+      'track',
+    );
+    // Beam (120,100)→(136,88): middle (128,94), half-length perpendicular (6,8).
+    const apexes = triangleApexes(sloped, level.terrain);
+    expect(apexes).toHaveLength(2);
+    expect(apexes).toContainEqual({ x: 134, y: 102 });
+    expect(apexes).toContainEqual({ x: 122, y: 86 });
+  });
+
+  it('snaps wood and steel to a nearby apex, but not track', () => {
+    const bridge = deck();
+    const pointer = { x: 131.5, y: 108 }; // near the apex (130, 110), off the grid point
+    for (const material of ['wood', 'steel'] as const) {
+      const plan = planBeam(bridge, level.terrain, LEFT_TOP, pointer, material);
+      expect(plan.target).toEqual({ kind: 'point', position: { x: 130, y: 110 } });
+    }
+    const trackPlan = planBeam(bridge, level.terrain, LEFT_TOP, pointer, 'track');
+    expect(trackPlan.guides).toEqual([]);
+  });
+
+  it('builds a symmetric zigzag under the deck', () => {
+    let bridge = deck();
+    const deckJoints = [0, 4, 6, 8, 2]; // ids along the deck, left to right
+    for (let i = 0; i < 4; i++) {
+      const apexX = 130 + i * 20;
+      // Down-right from the deck joint to the apex, then up to the next deck joint.
+      const nearApex = { x: apexX + 1, y: 109 };
+      const down = planBeam(bridge, level.terrain, deckJoints[i]!, nearApex, 'wood');
+      expect(down.placement.ok).toBe(true);
+      bridge = addBeam(bridge, down.fromJointId, down.target, 'wood');
+      const apexId = bridge.joints.at(-1)!.id;
+      const up = planBeam(bridge, level.terrain, apexId, { x: apexX + 9, y: 101 }, 'wood');
+      expect(up.target).toEqual({ kind: 'joint', jointId: deckJoints[i + 1] });
+      bridge = addBeam(bridge, up.fromJointId, up.target, 'wood');
+    }
+    const apexes = bridge.joints.filter((j) => !j.fixed && j.position.y === 110);
+    expect(apexes.map((j) => j.position.x)).toEqual([130, 150, 170, 190]);
   });
 });

@@ -1,4 +1,5 @@
 import {
+  beamEnds,
   canPlaceBeam,
   findJointNear,
   getJoint,
@@ -7,6 +8,7 @@ import {
   type Bridge,
   type PlacementResult,
 } from './bridge';
+import { isStrictlyInsidePolygon } from './geometry';
 import { MATERIALS, type MaterialId } from './materials';
 import { distance, type Vec2 } from './types';
 
@@ -71,6 +73,11 @@ export const GRID_SIZE = 5;
  */
 export const JOINT_SNAP_RADIUS = 8;
 
+/** Support materials that snap to triangle apexes over and under track beams. */
+const TRIANGLE_MATERIALS: ReadonlySet<MaterialId> = new Set(['wood', 'steel']);
+
+type Terrain = readonly (readonly Vec2[])[];
+
 /** The beam the player would get if they let go now. Drawn as a preview. */
 export interface BeamPlan {
   fromJointId: number;
@@ -79,26 +86,30 @@ export interface BeamPlan {
   to: Vec2;
   material: MaterialId;
   placement: PlacementResult;
+  /** Extra snap points (triangle apexes) to show while dragging. */
+  guides: readonly Vec2[];
 }
 
 /**
  * Works out where a beam dragged from `fromJointId` towards `pointer` ends:
  *
- * 1. Near an existing joint? Connect to it (even if too long; it shows red).
+ * 1. Near an existing joint or (for wood and steel) a triangle apex? Snap to
+ *    the nearest one, even if it is too far away (the preview shows red).
  * 2. Otherwise the end is limited to the material's max length and snapped to
  *    the grid. If that grid point holds a joint, connect to the joint instead
  *    of stacking a new one on top of it.
  */
 export function planBeam(
   bridge: Bridge,
-  terrain: readonly (readonly Vec2[])[],
+  terrain: Terrain,
   fromJointId: number,
   pointer: Vec2,
   material: MaterialId,
   snapRadius = JOINT_SNAP_RADIUS,
 ): BeamPlan {
   const from = getJoint(bridge, fromJointId).position;
-  const target = resolveTarget(bridge, fromJointId, pointer, material, snapRadius);
+  const guides = TRIANGLE_MATERIALS.has(material) ? triangleApexes(bridge, terrain) : [];
+  const target = resolveTarget(bridge, fromJointId, pointer, material, snapRadius, guides);
   return {
     fromJointId,
     target,
@@ -106,7 +117,35 @@ export function planBeam(
     to: targetPosition(bridge, target),
     material,
     placement: canPlaceBeam(bridge, terrain, fromJointId, target, material),
+    guides,
   };
+}
+
+/**
+ * Apexes of the right-angled, isosceles triangles that have a track beam as
+ * their base: one above and one below the middle of each track beam, half
+ * the beam's length away. Both legs then meet the track at 45°, so a row of
+ * them under (or over) the deck forms a symmetric zigzag truss.
+ *
+ * Apexes inside the terrain, or where a joint already is, are left out.
+ */
+export function triangleApexes(bridge: Bridge, terrain: Terrain): Vec2[] {
+  const apexes: Vec2[] = [];
+  for (const beam of bridge.beams) {
+    if (beam.material !== 'track') continue;
+    const [a, b] = beamEnds(bridge, beam);
+    const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    // Perpendicular to the beam with length half the beam: (dx, dy) turned 90°, halved.
+    const offset = { x: -(b.y - a.y) / 2, y: (b.x - a.x) / 2 };
+    for (const sign of [-1, 1]) {
+      apexes.push({ x: middle.x + sign * offset.x, y: middle.y + sign * offset.y });
+    }
+  }
+  return apexes.filter(
+    (apex) =>
+      !findJointNear(bridge, apex, 0.5) &&
+      !terrain.some((polygon) => isStrictlyInsidePolygon(apex, polygon)),
+  );
 }
 
 function resolveTarget(
@@ -115,9 +154,16 @@ function resolveTarget(
   pointer: Vec2,
   material: MaterialId,
   snapRadius: number,
+  guides: readonly Vec2[],
 ): BeamTarget {
+  // Snap to whichever is closer: an existing joint or a triangle apex.
   const nearJoint = findJointNear(bridge, pointer, snapRadius, fromJointId);
-  if (nearJoint) return { kind: 'joint', jointId: nearJoint.id };
+  const nearGuide = nearestWithin(guides, pointer, snapRadius);
+  const jointIsCloser =
+    nearJoint !== null &&
+    (nearGuide === null || distance(nearJoint.position, pointer) <= distance(nearGuide, pointer));
+  if (nearJoint && jointIsCloser) return { kind: 'joint', jointId: nearJoint.id };
+  if (nearGuide) return { kind: 'point', position: nearGuide };
 
   const from = getJoint(bridge, fromJointId).position;
   const point = snapToGridWithin(from, pointer, MATERIALS[material].maxLength);
@@ -166,4 +212,10 @@ function nearest(points: readonly Vec2[], to: Vec2): Vec2 {
   let best = points[0] ?? to;
   for (const p of points) if (distance(p, to) < distance(best, to)) best = p;
   return best;
+}
+
+/** The point closest to `to` within `radius`, or null. */
+function nearestWithin(points: readonly Vec2[], to: Vec2, radius: number): Vec2 | null {
+  const best = nearest(points, to);
+  return points.length > 0 && distance(best, to) <= radius ? best : null;
 }

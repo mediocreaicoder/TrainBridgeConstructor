@@ -156,13 +156,13 @@ undo/redo sequences (including that a new action clears `future`).
 Done when: on the phone you can build a deck across level 1, remove a beam with a double-tap,
 and undo and redo several steps.
 
-### Follow-up (agreed, not built yet): easy symmetric triangle zigzag
+### Triangle snapping (done)
 
-A wood beam at 45° that starts at the same joint as a horizontal track beam must be easy to end
-exactly below the middle of that track beam's length. Then a symmetric zigzag of triangles
-(Warren truss) under the deck is easy to build. Likely approach: snapping that favours 45°
-angles and the "half a track beam" horizontal reach from the start joint. Clarify the details
-with the user before building it.
+Wood and steel must be easy to build as triangles on top of or under track beams, with the
+middle of each triangle at the middle of the track beam's length. `triangleApexes()` in
+`editor.ts` gives each track beam two apexes, above and below its middle, half the beam's length
+away (so both legs meet the track at 45°). While dragging wood or steel, the end snaps to the
+nearest apex or joint, and the apexes are drawn as small yellow diamonds.
 
 ---
 

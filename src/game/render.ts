@@ -40,6 +40,7 @@ const PALETTE = {
   cable: '#2a2a2a',
   previewValid: '#ffffff',
   previewInvalid: '#ff4a3c',
+  guide: '#ffd84a',
   outline: '#1c1c1c',
   pole: '#d8d8d8',
   flagStart: '#3cc84a',
@@ -259,6 +260,8 @@ function drawMaterialLine(
 
 /** Preview of the beam being dragged: white if it can be built, red if not. */
 function drawBeamPlan(ctx: CanvasRenderingContext2D, plan: BeamPlan): void {
+  for (const guide of plan.guides) drawGuide(ctx, guide);
+
   const color = plan.placement.ok ? PALETTE.previewValid : PALETTE.previewInvalid;
   stampLine(ctx, plan.from, plan.to, color, 0, 0, 1, 1);
 
@@ -270,6 +273,18 @@ function drawBeamPlan(ctx: CanvasRenderingContext2D, plan: BeamPlan): void {
   ctx.fillRect(x - 2, y + 2, 5, 1);
   ctx.fillRect(x - 2, y - 1, 1, 3);
   ctx.fillRect(x + 2, y - 1, 1, 3);
+}
+
+/** A small diamond marking a snap point, such as a triangle apex. */
+function drawGuide(ctx: CanvasRenderingContext2D, at: Vec2): void {
+  const x = Math.round(at.x);
+  const y = Math.round(at.y);
+  ctx.fillStyle = PALETTE.guide;
+  ctx.fillRect(x, y - 2, 1, 1);
+  ctx.fillRect(x - 1, y - 1, 3, 1);
+  ctx.fillRect(x - 2, y, 5, 1);
+  ctx.fillRect(x - 1, y + 1, 3, 1);
+  ctx.fillRect(x, y + 2, 1, 1);
 }
 
 /** Anchors are large squares; free joints the player made are small ones. */
