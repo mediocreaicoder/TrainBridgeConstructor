@@ -19,12 +19,13 @@ What works:
 - Level 1 is drawn in a pixel style: banded sky, two cliffs with grass and dirt speckles,
   animated water, rails on both banks, start and goal flags, a dashed hint line across the gap,
   and four anchor points.
-- Pointer input: pressing near an anchor (within 10 world units) highlights it and sends an
-  `anchorTapped` event to React. Pressing elsewhere sends `emptyTapped`. The HUD shows the result.
 - Works in portrait and landscape. The 320×180 playfield is always fully visible.
 - Phase 0 is done: type/lint overlay (vite-plugin-checker), Vitest, `window.__game` in dev, `?level=N`.
+- Phase 1 is done: drag from a joint to build beams (grid snap 5, joint snap 8, end lifted 20 CSS px
+  above the finger on touch), double-tap a beam to remove it, undo/redo, toolbar with materials.
+  Decisions: beams must start from an anchor or joint; beams may cross.
 
-What doesn't exist yet: bridge building, physics, trains, sound, more levels.
+What doesn't exist yet: physics, trains, sound, more levels.
 
 ### Files
 
@@ -35,9 +36,15 @@ What doesn't exist yet: bridge building, physics, trains, sound, more levels.
 | `src/game/render.ts` | `renderFrame()` plus one function per layer. `FrameState` holds per-frame data. |
 | `src/game/level.ts` | `Level` interface, `LEVELS`, `getLevel()`. |
 | `src/game/types.ts` | `Vec2`, `distance()`. |
-| `src/ui/GameCanvas.tsx` | Creates and destroys the Engine and forwards events through a ref. |
+| `src/game/geometry.ts` | Distance to segment, point-in-polygon. |
+| `src/game/materials.ts` | `MATERIALS` table (balancing values), `MIN_BEAM_LENGTH`. |
+| `src/game/bridge.ts` | Immutable `Bridge` model: `addBeam`, `removeBeam`, `canPlaceBeam`, hit tests. |
+| `src/game/editor.ts` | Undo/redo `History`, and `planBeam()` (snapping + validation while dragging). |
+| `src/game/debug.ts` | Dev-only `window.__game` (state, `addBeam`, `removeBeam`, `undo`, `redo`). |
+| `src/ui/GameCanvas.tsx` | Creates and destroys the Engine, forwards events, exposes `GameControls` (undo/redo) via ref. |
 | `src/ui/Hud.tsx` | Text overlay (`pointer-events: none`). |
-| `src/App.tsx` | UI state; maps engine events to HUD messages. |
+| `src/ui/Toolbar.tsx` | Material picker, undo, redo, play (disabled until phase 2). |
+| `src/App.tsx` | UI state (material, undo/redo availability); wires engine events to the toolbar. |
 
 ### Rules that must stay true
 

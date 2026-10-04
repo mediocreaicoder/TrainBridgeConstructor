@@ -54,3 +54,102 @@ body,
     display: block;
   }
 }
+
+/* -------------------------------------------------------------------------
+   Toolbar. Portrait: one bar along the bottom. Landscape: materials in a
+   column on the left, actions on the right, in the spare landscape beside
+   the playfield.
+   ------------------------------------------------------------------------- */
+
+.toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  /* Let touches between the buttons reach the canvas. */
+  pointer-events: none;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.toolbar-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #fff;
+  background: #2b3a55;
+  border: 2px solid #1c1c1c;
+  /* Hard pixel bevel instead of a rounded, soft button. */
+  box-shadow:
+    inset -2px -2px 0 #1a2438,
+    inset 2px 2px 0 #4a5f86;
+  border-radius: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.toolbar-button:active:not(:disabled) {
+  box-shadow:
+    inset 2px 2px 0 #1a2438,
+    inset -2px -2px 0 #4a5f86;
+}
+
+.toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.toolbar-button[aria-checked='true'] {
+  background: #4a5f86;
+  outline: 2px solid #ffd84a;
+  outline-offset: -2px;
+}
+
+.material-swatch {
+  width: 16px;
+  height: 6px;
+  border: 1px solid #1c1c1c;
+}
+
+.material-track .material-swatch {
+  background: linear-gradient(#b0b6be 0 2px, #5a3a1e 2px);
+}
+.material-wood .material-swatch {
+  background: #a0683a;
+}
+.material-steel .material-swatch {
+  background: #9aa4b0;
+}
+.material-cable .material-swatch {
+  height: 2px;
+  margin: 2px 0;
+  background: #2a2a2a;
+}
+
+@media (orientation: landscape) {
+  .toolbar {
+    top: 0;
+    bottom: 0;
+    padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .toolbar-group {
+    flex-direction: column;
+  }
+}

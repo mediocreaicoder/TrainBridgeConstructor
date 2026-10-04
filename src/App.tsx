@@ -1,31 +1,40 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { EngineEvent } from './game/Engine';
 import { getLevel, levelIndexFromQuery } from './game/level';
-import { GameCanvas } from './ui/GameCanvas';
+import type { MaterialId } from './game/materials';
+import { GameCanvas, type GameControls } from './ui/GameCanvas';
 import { Hud } from './ui/Hud';
+import { Toolbar } from './ui/Toolbar';
 
-const INITIAL_MESSAGE = 'Tap an anchor point to start building';
+const HINT = 'Drag from a joint to build. Double-tap a beam to remove it';
 
 export function App() {
   const [levelIndex] = useState(() => levelIndexFromQuery(window.location.search));
   const level = getLevel(levelIndex);
-  const [message, setMessage] = useState(INITIAL_MESSAGE);
+  const [material, setMaterial] = useState<MaterialId>('track');
+  const [history, setHistory] = useState({ canUndo: false, canRedo: false });
+  const gameRef = useRef<GameControls>(null);
 
   const handleEngineEvent = useCallback((event: EngineEvent) => {
     switch (event.type) {
-      case 'anchorTapped':
-        setMessage(`Anchor ${event.anchorIndex + 1} selected`);
-        break;
-      case 'emptyTapped':
-        setMessage('No anchor there. Tap a white square');
+      case 'historyChanged':
+        setHistory({ canUndo: event.canUndo, canRedo: event.canRedo });
         break;
     }
   }, []);
 
   return (
     <>
-      <GameCanvas level={level} onEvent={handleEngineEvent} />
-      <Hud level={level} message={message} />
+      <GameCanvas ref={gameRef} level={level} material={material} onEvent={handleEngineEvent} />
+      <Hud level={level} message={HINT} />
+      <Toolbar
+        material={material}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        onMaterialChange={setMaterial}
+        onUndo={() => gameRef.current?.undo()}
+        onRedo={() => gameRef.current?.redo()}
+      />
     </>
   );
 }

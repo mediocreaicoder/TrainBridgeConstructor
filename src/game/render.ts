@@ -1,15 +1,22 @@
+import { beamEnds, type Beam, type Bridge, type Joint } from './bridge';
 import type { Camera } from './camera';
+import type { BeamPlan } from './editor';
 import type { Level } from './level';
+import type { MaterialId } from './materials';
 import type { Vec2 } from './types';
 
 /** Everything that changes from frame to frame and affects drawing. */
 export interface FrameState {
   /** Seconds since the engine started. Drives animations. */
   time: number;
-  /** Finger/mouse position while pressed, in world units. */
+  /** The bridge as built so far. */
+  bridge: Bridge;
+  /** Highlighted joint: where a drag starts, or the joint it would connect to. */
+  activeJoint: number | null;
+  /** Finger/mouse position while pressed (lifted above the finger while dragging). */
   pointer: Vec2 | null;
-  /** Index into level.anchors of the anchor under the pointer, if any. */
-  activeAnchor: number | null;
+  /** The beam being dragged, drawn as a preview. */
+  plan: BeamPlan | null;
 }
 
 /** A small, limited palette keeps the retro look consistent. */
@@ -26,6 +33,13 @@ const PALETTE = {
   sleeper: '#5a3a1e',
   anchorFill: '#e8e8e8',
   anchorActive: '#ffd84a',
+  jointFill: '#c8c8c8',
+  wood: '#a0683a',
+  woodDark: '#6b4220',
+  steel: '#9aa4b0',
+  cable: '#2a2a2a',
+  previewValid: '#ffffff',
+  previewInvalid: '#ff4a3c',
   outline: '#1c1c1c',
   pole: '#d8d8d8',
   flagStart: '#3cc84a',
@@ -54,7 +68,9 @@ export function renderFrame(
   drawGapHint(ctx, level, state.time);
   drawFlag(ctx, { x: level.bridgeStart.x - 8, y: level.bridgeStart.y }, PALETTE.flagStart);
   drawFlag(ctx, { x: level.bridgeEnd.x + 8, y: level.bridgeEnd.y }, PALETTE.flagEnd);
-  drawAnchors(ctx, level.anchors, state.activeAnchor, state.time);
+  drawBeams(ctx, state.bridge);
+  if (state.plan) drawBeamPlan(ctx, state.plan);
+  drawJoints(ctx, state.bridge.joints, state.activeJoint, state.time);
   if (state.pointer) drawPointer(ctx, state.pointer);
 }
 
@@ -189,25 +205,88 @@ function drawFlag(ctx: CanvasRenderingContext2D, base: Vec2, color: string): voi
   ctx.fillRect(base.x + 1, base.y - poleHeight + 1, 6, 4);
 }
 
-function drawAnchors(
+/** Track beams are drawn last so the deck sits on top of its supports. */
+function drawBeams(ctx: CanvasRenderingContext2D, bridge: Bridge): void {
+  const supports = bridge.beams.filter((beam) => beam.material !== 'track');
+  const deck = bridge.beams.filter((beam) => beam.material === 'track');
+  for (const beam of [...supports, ...deck]) drawBeam(ctx, bridge, beam);
+}
+
+function drawBeam(ctx: CanvasRenderingContext2D, bridge: Bridge, beam: Beam): void {
+  const [a, b] = beamEnds(bridge, beam);
+  drawMaterialLine(ctx, a, b, beam.material);
+}
+
+/**
+ * Each material has its own look, built from square "brushes" stamped along
+ * a pixel line. Offsets are relative to the line pixel.
+ */
+function drawMaterialLine(
   ctx: CanvasRenderingContext2D,
-  anchors: Vec2[],
-  activeIndex: number | null,
+  a: Vec2,
+  b: Vec2,
+  material: MaterialId,
+): void {
+  switch (material) {
+    case 'track':
+      // Planks just below the rail line, matching the track on the banks.
+      stampLine(ctx, a, b, PALETTE.sleeper, -1, -2, 1, 2);
+      stampLine(ctx, a, b, PALETTE.rail, 0, -3, 1, 1);
+      break;
+    case 'wood':
+      stampLine(ctx, a, b, PALETTE.woodDark, -1, -1, 2, 2);
+      stampLine(ctx, a, b, PALETTE.wood, 0, -1, 1, 1);
+      break;
+    case 'steel':
+      stampLine(ctx, a, b, PALETTE.outline, -1, -1, 3, 3);
+      stampLine(ctx, a, b, PALETTE.steel, 0, 0, 1, 1);
+      break;
+    case 'cable':
+      stampLine(ctx, a, b, PALETTE.cable, 0, 0, 1, 1);
+      break;
+  }
+}
+
+/** Preview of the beam being dragged: white if it can be built, red if not. */
+function drawBeamPlan(ctx: CanvasRenderingContext2D, plan: BeamPlan): void {
+  const color = plan.placement.ok ? PALETTE.previewValid : PALETTE.previewInvalid;
+  stampLine(ctx, plan.from, plan.to, color, 0, 0, 1, 1);
+
+  // Hollow square marking where the beam will end.
+  const x = Math.round(plan.to.x);
+  const y = Math.round(plan.to.y);
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 2, y - 2, 5, 1);
+  ctx.fillRect(x - 2, y + 2, 5, 1);
+  ctx.fillRect(x - 2, y - 1, 1, 3);
+  ctx.fillRect(x + 2, y - 1, 1, 3);
+}
+
+/** Anchors are large squares; free joints the player made are small ones. */
+function drawJoints(
+  ctx: CanvasRenderingContext2D,
+  joints: readonly Joint[],
+  activeJointId: number | null,
   time: number,
 ): void {
-  anchors.forEach((anchor, i) => {
-    const isActive = i === activeIndex;
-    // The active anchor grows a pixel every other quarter second.
-    const size = isActive ? 5 + (Math.floor(time * 4) % 2) * 2 : 5;
+  for (const joint of joints) {
+    const isActive = joint.id === activeJointId;
+    const baseSize = joint.fixed ? 5 : 3;
+    // The active joint grows a pixel every other quarter second.
+    const size = isActive ? baseSize + (Math.floor(time * 4) % 2) * 2 : baseSize;
     const half = Math.floor(size / 2);
-    const x = Math.round(anchor.x) - half;
-    const y = Math.round(anchor.y) - half;
+    const x = Math.round(joint.position.x) - half;
+    const y = Math.round(joint.position.y) - half;
 
     ctx.fillStyle = PALETTE.outline;
     ctx.fillRect(x - 1, y - 1, size + 2, size + 2);
-    ctx.fillStyle = isActive ? PALETTE.anchorActive : PALETTE.anchorFill;
+    ctx.fillStyle = isActive
+      ? PALETTE.anchorActive
+      : joint.fixed
+        ? PALETTE.anchorFill
+        : PALETTE.jointFill;
     ctx.fillRect(x, y, size, size);
-  });
+  }
 }
 
 /** A small crosshair under the finger. */
@@ -224,6 +303,53 @@ function drawPointer(ctx: CanvasRenderingContext2D, p: Vec2): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Draws a crisp pixel line from `a` to `b` by stamping a `width`×`height`
+ * rectangle, offset by (`offsetX`, `offsetY`), on every pixel of the line.
+ * Canvas strokes would be anti-aliased and blur the pixel look.
+ */
+function stampLine(
+  ctx: CanvasRenderingContext2D,
+  a: Vec2,
+  b: Vec2,
+  color: string,
+  offsetX: number,
+  offsetY: number,
+  width: number,
+  height: number,
+): void {
+  ctx.fillStyle = color;
+  forEachLinePixel(a, b, (x, y) => ctx.fillRect(x + offsetX, y + offsetY, width, height));
+}
+
+/** Bresenham's line algorithm: visits each pixel on the line between two points once. */
+function forEachLinePixel(a: Vec2, b: Vec2, visit: (x: number, y: number) => void): void {
+  let x = Math.round(a.x);
+  let y = Math.round(a.y);
+  const endX = Math.round(b.x);
+  const endY = Math.round(b.y);
+  const dx = Math.abs(endX - x);
+  const dy = -Math.abs(endY - y);
+  const stepX = x < endX ? 1 : -1;
+  const stepY = y < endY ? 1 : -1;
+  // The error term tracks how far the drawn pixels are from the ideal line.
+  let error = dx + dy;
+
+  for (;;) {
+    visit(x, y);
+    if (x === endX && y === endY) return;
+    const doubled = 2 * error;
+    if (doubled >= dy) {
+      error += dy;
+      x += stepX;
+    }
+    if (doubled <= dx) {
+      error += dx;
+      y += stepY;
+    }
+  }
+}
 
 function tracePolygon(ctx: CanvasRenderingContext2D, polygon: Vec2[]): void {
   ctx.beginPath();

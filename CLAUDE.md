@@ -31,8 +31,11 @@ claude.ai project "Train Bridge Cosntructor". Build it step by step, starting wi
 - `src/game/`: plain TypeScript, no React. Runs every frame.
   - `Engine.ts`: rAF game loop, pointer input, resize. Emits `EngineEvent`s to the UI.
   - `camera.ts`: world units ↔ canvas/CSS pixels.
-  - `render.ts`: draws a frame (sky, water, terrain, track, anchors, flags).
+  - `render.ts`: draws a frame (sky, water, terrain, track, flags, beams, joints, drag preview).
   - `level.ts`: level data (terrain polygons, anchors, bridgeStart/bridgeEnd).
+  - `bridge.ts` / `editor.ts` / `materials.ts`: immutable bridge model, undo/redo and drag
+    snapping, material table. Pure and unit tested.
+- Full plan and per-phase status: `docs/PLAN.md`.
 - `src/ui/`: React components. `GameCanvas.tsx` is the ONLY bridge between React and the
   engine: it creates the Engine in a useEffect and forwards events. React never runs per frame.
 - Pixel look: the canvas backing store is 1 px per world unit; the 320×180 playfield is always
