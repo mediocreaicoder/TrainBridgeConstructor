@@ -1,4 +1,5 @@
 import { cssToWorld, fitCamera, type Camera } from './camera';
+import { installDebugHook } from './debug';
 import type { Level } from './level';
 import { renderFrame, type FrameState } from './render';
 import { distance, type Vec2 } from './types';
@@ -31,10 +32,12 @@ export class Engine {
   private state: FrameState = { time: 0, pointer: null, activeAnchor: null };
   private frameId: number | null = null;
   private lastFrameTime: number | null = null;
+  /** Removes `window.__game`. Only set in dev builds. */
+  private removeDebugHook: (() => void) | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly level: Level,
+    readonly level: Level,
   ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2D canvas is not supported');
@@ -53,12 +56,18 @@ export class Engine {
     this.resizeObserver.observe(this.canvas);
     this.handleResize();
     this.frameId = requestAnimationFrame(this.tick);
+
+    // Vite replaces import.meta.env.DEV with `false` in production builds,
+    // so this branch and the debug module are dropped from the bundle.
+    if (import.meta.env.DEV) this.removeDebugHook = installDebugHook(this);
   }
 
   /** Stops the loop and removes every listener. The engine can't be restarted. */
   destroy(): void {
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
     this.frameId = null;
+    this.removeDebugHook?.();
+    this.removeDebugHook = null;
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
     this.canvas.removeEventListener('pointermove', this.handlePointerMove);
@@ -71,6 +80,12 @@ export class Engine {
   onEvent(listener: EngineListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** A snapshot of the current frame state, safe for callers to keep or modify. */
+  getState(): FrameState {
+    const { pointer } = this.state;
+    return { ...this.state, pointer: pointer && { ...pointer } };
   }
 
   // -------------------------------------------------------------------------

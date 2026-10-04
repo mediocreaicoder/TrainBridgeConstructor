@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react';
 import type { EngineEvent } from './game/Engine';
-import { getLevel } from './game/level';
+import { getLevel, levelIndexFromQuery } from './game/level';
 import { GameCanvas } from './ui/GameCanvas';
 import { Hud } from './ui/Hud';
 
 const INITIAL_MESSAGE = 'Tap an anchor point to start building';
 
 export function App() {
-  const [levelIndex] = useState(0);
+  const [levelIndex] = useState(() => levelIndexFromQuery(window.location.search));
   const level = getLevel(levelIndex);
   const [message, setMessage] = useState(INITIAL_MESSAGE);
 

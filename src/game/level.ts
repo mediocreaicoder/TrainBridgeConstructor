@@ -63,6 +63,18 @@ export const LEVELS: readonly Level[] = [
   },
 ];
 
+/**
+ * Reads the `?level=N` URL parameter (1-based, like the level ids shown to
+ * the player) and returns a 0-based index into LEVELS. Missing or invalid
+ * values fall back to the first level. Meant for jumping to a level while testing.
+ */
+export function levelIndexFromQuery(search: string, levelCount = LEVELS.length): number {
+  const param = new URLSearchParams(search).get('level');
+  if (param === null || !/^\d+$/.test(param)) return 0;
+  const index = Number(param) - 1;
+  return index >= 0 && index < levelCount ? index : 0;
+}
+
 export function getLevel(index: number): Level {
   const level = LEVELS[index];
   if (!level) throw new Error(`No level with index ${index}`);
