@@ -208,6 +208,9 @@ Decisions (2026-10-04):
 
 - `mode: 'edit' | 'run'` in Engine. Play creates the vehicle; Stop removes it and returns to the
   editor. The bridge is never changed by a run.
+- The run ends by itself 1.5 s after the vehicle arrives or falls in (decided 2026-10-04), and
+  the game goes back to editing. The result message stays in the HUD until the bridge changes or
+  Play is pressed again. Stop can still end a run early.
 - During a run: building, undo/redo and material buttons are disabled; pinch, pan and zoom still
   work. The Play button becomes Stop.
 - Events: `{ type: 'modeChanged', mode }` and `{ type: 'runFinished', outcome }`. The HUD shows the

@@ -100,6 +100,12 @@ const MAX_FRAME_SECONDS = 0.1;
 const SIMULATION_STEP = 1 / 120;
 
 /**
+ * Once the vehicle has arrived or fallen in, the run goes on this long (so
+ * the player sees what happened) and then ends by itself, back to editing.
+ */
+const AUTO_STOP_SECONDS = 1.5;
+
+/**
  * What the finger(s) on the screen are doing:
  * - build: one finger that started on a joint; dragging it plans a beam.
  * - pan: one finger that started elsewhere; dragging it moves the view.
@@ -160,6 +166,8 @@ export class Engine {
   private track: TrackSegment[] = [];
   /** Time not yet simulated, carried over to the next frame. */
   private unsimulatedSeconds = 0;
+  /** Simulated time since the run was decided, or null while it is still undecided. */
+  private secondsSinceOutcome: number | null = null;
   private state: FrameState;
   /** Fingers / mouse buttons currently down, in CSS pixels relative to the canvas. */
   private readonly pointers = new Map<number, Vec2>();
@@ -265,6 +273,7 @@ export class Engine {
     this.track = buildTrack(this.level, this.history.present);
     this.state.vehicle = createVehicle(this.level);
     this.unsimulatedSeconds = 0;
+    this.secondsSinceOutcome = null;
     this.cancelBuildGesture();
     this.setMode('run');
   }
@@ -361,15 +370,23 @@ export class Engine {
     }
   }
 
-  /** One simulation step. Reports the outcome the moment the run is decided. */
+  /**
+   * One simulation step. Reports the outcome the moment the run is decided,
+   * and ends the run AUTO_STOP_SECONDS later.
+   */
   private simulateStep(): void {
     const vehicle = this.state.vehicle;
     if (this.mode !== 'run' || !vehicle) return;
 
     const next = stepVehicle(vehicle, HANDCAR, this.track, this.level, SIMULATION_STEP);
     this.state.vehicle = next;
-    if (next.outcome && !vehicle.outcome) {
+
+    if (next.outcome && this.secondsSinceOutcome === null) {
+      this.secondsSinceOutcome = 0;
       this.emit({ type: 'runFinished', outcome: next.outcome });
+    } else if (this.secondsSinceOutcome !== null) {
+      this.secondsSinceOutcome += SIMULATION_STEP;
+      if (this.secondsSinceOutcome >= AUTO_STOP_SECONDS) this.stop();
     }
   }
 

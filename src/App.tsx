@@ -8,10 +8,11 @@ import { Hud } from './ui/Hud';
 import { Toolbar } from './ui/Toolbar';
 
 const EDIT_HINT = 'Drag from a joint to build. Pinch to zoom. Double-tap a beam to remove it';
-const RUN_MESSAGES: Record<RunOutcome | 'running', string> = {
-  running: 'Here comes the handcar!',
+const RUNNING_MESSAGE = 'Here comes the handcar!';
+/** Shown when the run is decided, and kept after it ends until the bridge changes. */
+const OUTCOME_MESSAGES: Record<RunOutcome, string> = {
   arrived: 'The handcar made it across!',
-  lost: 'Splash! Press Stop and fix the bridge',
+  lost: 'Splash! Fix the bridge and try again',
 };
 
 export function App() {
@@ -28,13 +29,15 @@ export function App() {
     switch (event.type) {
       case 'historyChanged':
         setHistory({ canUndo: event.canUndo, canRedo: event.canRedo });
+        setOutcome(null); // the bridge changed, so the last result is out of date
         break;
       case 'zoomChanged':
         setZoom({ canZoomIn: event.canZoomIn, canZoomOut: event.canZoomOut });
         break;
       case 'modeChanged':
         setMode(event.mode);
-        setOutcome(null);
+        // A new run starts undecided. Back in edit mode the result stays visible.
+        if (event.mode === 'run') setOutcome(null);
         break;
       case 'runFinished':
         setOutcome(event.outcome);
@@ -42,7 +45,11 @@ export function App() {
     }
   }, []);
 
-  const message = mode === 'edit' ? EDIT_HINT : RUN_MESSAGES[outcome ?? 'running'];
+  const message = outcome
+    ? OUTCOME_MESSAGES[outcome]
+    : mode === 'run'
+      ? RUNNING_MESSAGE
+      : EDIT_HINT;
 
   return (
     <>
