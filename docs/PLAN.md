@@ -184,6 +184,8 @@ Decisions (2026-10-04):
 - The first vehicle is an animated **one-man handcar** (Norwegian: dressin): a small platform on
   two wheels with a man pumping a see-saw lever. More trains come in phase 6.
 - Only **track** beams carry the vehicle. Wood, steel and cable are supports only.
+- The handcar's speed stays at 16 world units/s for now. Revisit it once physics makes the
+  crossing interesting (phase 3).
 
 ### Model: `src/game/train.ts` (pure, tested)
 
