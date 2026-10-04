@@ -19,6 +19,8 @@ import {
   type CameraView,
   type ScreenSize,
 } from './camera';
+import { GameAudio } from './audio';
+import { soundCues, summarizeRun, type SoundId } from './cues';
 import { installDebugHook } from './debug';
 import {
   canRedo,
@@ -32,6 +34,7 @@ import {
   undo,
   type History,
 } from './editor';
+import { SHAKE_SECONDS, spawnSplash, stepDroplets } from './effects';
 import type { Level } from './level';
 import type { MaterialId } from './materials';
 import { renderFrame, type FrameState } from './render';
@@ -167,6 +170,7 @@ export class Engine {
   private lastTap: Tap | null = null;
   private frameId: number | null = null;
   private lastFrameTime: number | null = null;
+  private readonly audio = new GameAudio();
   /** Removes `window.__game`. Only set in dev builds. */
   private removeDebugHook: (() => void) | null = null;
 
@@ -188,6 +192,8 @@ export class Engine {
       pointer: null,
       plan: null,
       run: null,
+      droplets: [],
+      shake: 0,
     };
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
 
@@ -224,6 +230,7 @@ export class Engine {
     this.canvas.removeEventListener('pointercancel', this.handlePointerUp);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.listeners.clear();
+    this.audio.close();
   }
 
   /** Subscribes to engine events. Returns a function that unsubscribes. */
@@ -251,6 +258,15 @@ export class Engine {
     this.material = material;
   }
 
+  setMuted(muted: boolean): void {
+    this.audio.setMuted(muted);
+  }
+
+  /** The most recent sounds played, newest last. For the debug hook. */
+  getSoundHistory(): SoundId[] {
+    return [...this.audio.history];
+  }
+
   undo(): void {
     if (this.mode === 'edit') this.setHistory(undo(this.history));
   }
@@ -270,6 +286,9 @@ export class Engine {
     this.secondsSinceOutcome = null;
     this.cancelBuildGesture();
     this.setMode('run');
+    // Play is pressed by the user, so this is a gesture that may start audio (iOS).
+    this.audio.unlock();
+    this.audio.play('bell');
   }
 
   /** Ends the run and goes back to editing the (unchanged) bridge. */
@@ -355,6 +374,7 @@ export class Engine {
    */
   private update(dt: number): void {
     this.state.time += dt;
+    this.updateEffects(dt);
     if (this.mode !== 'run') return;
 
     this.unsimulatedSeconds += dt;
@@ -372,15 +392,35 @@ export class Engine {
     const run = this.state.run;
     if (this.mode !== 'run' || !run) return;
 
+    const before = summarizeRun(run);
     stepRun(run, this.level, HANDCAR, SIMULATION_STEP);
-    const next = run.vehicle;
+    for (const cue of soundCues(before, summarizeRun(run), this.level)) this.handleCue(cue);
 
+    const next = run.vehicle;
     if (next.outcome && this.secondsSinceOutcome === null) {
       this.secondsSinceOutcome = 0;
       this.emit({ type: 'runFinished', outcome: next.outcome });
     } else if (this.secondsSinceOutcome !== null) {
       this.secondsSinceOutcome += SIMULATION_STEP;
       if (this.secondsSinceOutcome >= AUTO_STOP_SECONDS) this.stop();
+    }
+  }
+
+  /** Plays a cue's sound, and starts the visual effect that goes with it. */
+  private handleCue(cue: SoundId): void {
+    this.audio.play(cue);
+    if (cue === 'crack') this.state.shake = SHAKE_SECONDS;
+    if (cue === 'splash' && this.state.run && this.level.waterY !== null) {
+      const at = { x: this.state.run.vehicle.position.x, y: this.level.waterY };
+      this.state.droplets = [...this.state.droplets, ...spawnSplash(at, Math.round(at.x))];
+    }
+  }
+
+  /** Effects run in screen time, so they finish even after the run has stopped. */
+  private updateEffects(dt: number): void {
+    this.state.shake = Math.max(0, this.state.shake - dt);
+    if (this.state.droplets.length > 0 && this.level.waterY !== null) {
+      this.state.droplets = stepDroplets(this.state.droplets, dt, this.level.waterY);
     }
   }
 
@@ -451,6 +491,8 @@ export class Engine {
   // -------------------------------------------------------------------------
 
   private handlePointerDown = (event: PointerEvent): void => {
+    // Any touch is a user gesture, so audio may start now (needed on iOS).
+    this.audio.unlock();
     // Keep receiving move/up events even if the finger slides off the canvas.
     this.canvas.setPointerCapture(event.pointerId);
     this.pointers.set(event.pointerId, this.toCss(event));

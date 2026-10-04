@@ -28,6 +28,8 @@ export interface GameDebugApi {
   stop(): void;
   /** Simulates the run `seconds` ahead immediately, without waiting for frames. */
   stepSeconds(seconds: number): void;
+  /** The most recent sounds played, newest last. */
+  sounds(): string[];
 }
 
 declare global {
@@ -59,6 +61,7 @@ export function installDebugHook(engine: Engine): () => void {
     play: () => engine.play(),
     stop: () => engine.stop(),
     stepSeconds: (seconds) => engine.stepSeconds(seconds),
+    sounds: () => engine.getSoundHistory(),
   };
   window.__game = api;
 

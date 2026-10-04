@@ -39,6 +39,8 @@ claude.ai project "Train Bridge Cosntructor". Build it step by step, starting wi
     fixed 1/120 s step (`Engine.update`).
   - `physics.ts` / `run.ts`: XPBD bridge physics (mutates in place for speed) and one run
     (physics + vehicle stepped together). Balancing values live in `materials.ts`.
+  - `cues.ts` / `audio.ts` / `effects.ts`: sound cues per step (pure), Web Audio playback
+    with synthesised sounds (swap in files via `SOUND_FILES`), splash droplets and screen shake.
 - Full plan and per-phase status: `docs/PLAN.md`.
 - `src/ui/`: React components. `GameCanvas.tsx` is the ONLY bridge between React and the
   engine: it creates the Engine in a useEffect and forwards events. React never runs per frame.

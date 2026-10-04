@@ -16,6 +16,7 @@ export interface GameControls {
 interface GameCanvasProps {
   level: Level;
   material: MaterialId;
+  muted: boolean;
   onEvent: (event: EngineEvent) => void;
   ref?: Ref<GameControls>;
 }
@@ -24,7 +25,7 @@ interface GameCanvasProps {
  * The only bridge between React and the game engine.
  * React mounts the canvas; the engine owns everything that happens on it.
  */
-export function GameCanvas({ level, material, onEvent, ref }: GameCanvasProps) {
+export function GameCanvas({ level, material, muted, onEvent, ref }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
 
@@ -32,9 +33,11 @@ export function GameCanvas({ level, material, onEvent, ref }: GameCanvasProps) {
   // down and recreate the engine.
   const onEventRef = useRef(onEvent);
   const materialRef = useRef(material);
+  const mutedRef = useRef(muted);
   useEffect(() => {
     onEventRef.current = onEvent;
     materialRef.current = material;
+    mutedRef.current = muted;
   });
 
   useEffect(() => {
@@ -43,6 +46,7 @@ export function GameCanvas({ level, material, onEvent, ref }: GameCanvasProps) {
 
     const engine = new Engine(canvas, level);
     engine.setMaterial(materialRef.current);
+    engine.setMuted(mutedRef.current);
     const unsubscribe = engine.onEvent((event) => onEventRef.current(event));
     engine.start();
     engineRef.current = engine;
@@ -57,6 +61,10 @@ export function GameCanvas({ level, material, onEvent, ref }: GameCanvasProps) {
   useEffect(() => {
     engineRef.current?.setMaterial(material);
   }, [material]);
+
+  useEffect(() => {
+    engineRef.current?.setMuted(muted);
+  }, [muted]);
 
   useImperativeHandle(
     ref,

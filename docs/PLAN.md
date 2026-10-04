@@ -34,7 +34,10 @@ What works:
 - Phase 3 is done: XPBD bridge physics, strain colours, beams break into dangling halves, the
   handcar loads the bridge.
 
-What doesn't exist yet: sound and effects, more levels, more trains, terrain collisions.
+- Phase 4 is done: synthesised sound (bell, clacks, creaks, cracks, scream, splash, jingle),
+  splash droplets, screen shake on breaks, result panel, mute toggle.
+
+What doesn't exist yet: more levels, more trains, terrain collisions, recorded sounds.
 
 ### Files
 
@@ -51,12 +54,17 @@ What doesn't exist yet: sound and effects, more levels, more trains, terrain col
 | `src/game/editor.ts` | Undo/redo `History`, and `planBeam()` (snapping + validation while dragging). |
 | `src/game/physics.ts` | XPBD bridge simulation: particles, beam constraints, strain, breaking. |
 | `src/game/run.ts` | One run: simulation + vehicle, stepped together (used by Engine and tests). |
+| `src/game/cues.ts` | Which sounds a simulation step causes (pure). |
+| `src/game/audio.ts` | `GameAudio`: Web Audio playback, synthesised sounds, mute. |
+| `src/game/effects.ts` | Splash droplets and screen shake (pure). |
 | `src/game/train.ts` | Vehicle model: `buildTrack`, `createVehicle`, `stepVehicle` (roll, fall, outcome). |
 | `src/game/renderVehicle.ts` | Draws the handcar sprite (animated, rotated with nearest-neighbour). |
 | `src/game/pixelLine.ts` | Bresenham line helper shared by the renderers. |
 | `src/game/debug.ts` | Dev-only `window.__game` (state, `addBeam`, `removeBeam`, `undo`, `redo`, `play`, `stop`, `stepSeconds`). |
 | `src/ui/GameCanvas.tsx` | Creates and destroys the Engine, forwards events, exposes `GameControls` (undo/redo) via ref. |
 | `src/ui/Hud.tsx` | Text overlay (`pointer-events: none`). |
+| `src/ui/ResultPanel.tsx` | "Made it!" / "Splash!" panel with Try again and Edit bridge. |
+| `src/ui/preferences.ts` | Mute setting in localStorage. |
 | `src/ui/Toolbar.tsx` | Material picker, undo, redo, play (disabled until phase 2). |
 | `src/App.tsx` | UI state (material, undo/redo availability); wires engine events to the toolbar. |
 
@@ -316,15 +324,37 @@ split, none on the bank or while falling). `render.test.ts`: strain colours.
 
 ## 6. Phase 4: Feedback, sound and screams
 
-- `src/game/audio.ts` using the Web Audio API. iOS requires audio to be unlocked by a user
-  gesture: create or resume the `AudioContext` on the first tap or Play.
-- Sounds: train rumble and whistle, wood creaking under high strain, a crack when a beam breaks,
-  a splash, and **screams** when the train falls (the main feature from the original game).
-- Sources: generate simple ones with Web Audio (noise and oscillators for cracks and splashes),
-  or use CC0 sound files in `public/sounds/` with a licence note in `public/sounds/CREDITS.md`.
-- A mute button in the toolbar, with the choice saved in `localStorage`.
-- Effects: water splash particles, shaking on breaks, and a result panel (React) with "Try again",
-  "Edit bridge" and "Next level".
+Status: done (2026-10-04).
+
+Decisions:
+
+- Sounds are **synthesised in code now, recordings maybe later**. Every sound has a synthesised
+  version; a recording replaces it by adding one line to `SOUND_FILES` in `audio.ts` (files go in
+  `public/sounds/`, with a licence note in `public/sounds/CREDITS.md`). A missing or broken file
+  falls back to the synthesised sound.
+- After a run ends (1.5 s after it is decided), a **result panel** shows "Made it!" or "Splash!"
+  with "Try again" (runs the same bridge) and "Edit bridge" (closes the panel). "Next level"
+  comes with more levels (phase 5). Stopping a run by hand before it is decided shows no panel.
+
+### Code
+
+- `cues.ts` (pure, tested): `summarizeRun()` before and after each simulation step, and
+  `soundCues()` turns the difference into sounds: `bell` (Play), `clack` (every 10 units rolled),
+  `creak` (any beam above 75 % of its break limit), `crack` (a beam breaks), `scream` (the handcar
+  leaves the track), `splash` (it hits the water; none on dry levels), `arrive` (goal).
+- `audio.ts` (`GameAudio`, Web Audio): unlocked on the first touch or Play (iOS needs a user
+  gesture), master volume, mute, a minimum repeat interval per sound (creaks don't pile up), and
+  a short history for the debug hook (`window.__game.sounds()`). Synthesised sounds: noise bursts
+  through filters (clack, crack, splash), a thump, bells, a square-wave jingle, a wobbling
+  sawtooth creak, and the scream: a falling sawtooth with vibrato through two "ah" formant
+  filters.
+- `effects.ts` (pure, tested): splash droplets (seeded, so a run always looks the same) and a
+  short screen shake when a beam breaks, in whole world units so pixels stay crisp. Effects run
+  in screen time, so they finish after the run has stopped.
+- UI: a Sound/Muted toggle in the toolbar, saved in `localStorage` (`ui/preferences.ts`, every
+  access in try/catch), and `ui/ResultPanel.tsx`.
+
+Note: on iPhone, the ring/silent switch mutes Web Audio.
 
 ---
 
@@ -378,7 +408,7 @@ Defined in `src/game/trains.ts` as data: number of cars, mass per car, length, s
 - Grid snap size (suggestion: 5 units), and whether beams may cross each other.
 - Whether the bridge must be built from the start flag, or whether free floating beams are allowed.
 - Touch: offset the drag point above the finger, or use a magnifier?
-- Sound: generated sounds, or CC0 recordings (which screams)?
+- ~~Sound: generated sounds, or CC0 recordings?~~ Decided: generated now, recordings later.
 - Whether the train should brake or keep going when the bridge starts to fail.
 
 ---

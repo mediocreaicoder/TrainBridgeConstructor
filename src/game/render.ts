@@ -1,6 +1,7 @@
 import { beamEnds, type Beam, type Bridge, type Joint } from './bridge';
 import type { Camera } from './camera';
 import type { BeamPlan } from './editor';
+import { shakeOffset, type Droplet } from './effects';
 import type { Level } from './level';
 import { MATERIALS, type MaterialId } from './materials';
 import { particleAt, type Simulation } from './physics';
@@ -23,6 +24,10 @@ export interface FrameState {
   plan: BeamPlan | null;
   /** The simulated bridge and the vehicle during a run, or null while editing. */
   run: Run | null;
+  /** Water droplets from a splash. */
+  droplets: Droplet[];
+  /** Seconds of screen shake left (after a beam breaks). */
+  shake: number;
 }
 
 /** A small, limited palette keeps the retro look consistent. */
@@ -65,6 +70,15 @@ export function renderFrame(
   // Setting canvas.width resets context state, so set this every frame.
   ctx.imageSmoothingEnabled = false;
 
+  // A shake moves the whole picture, which uncovers a thin strip at the
+  // edges; clear it so it doesn't show the previous frame.
+  const shake = shakeOffset(state.shake, state.time);
+  if (shake.x !== 0 || shake.y !== 0) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = PALETTE.skyBands[0];
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+
   // From here on, all drawing uses world coordinates. The camera keeps
   // left/top on whole canvas pixels; rounding only removes float noise.
   const scale = camera.pixelScale;
@@ -73,8 +87,8 @@ export function renderFrame(
     0,
     0,
     scale,
-    -Math.round(camera.left * scale),
-    -Math.round(camera.top * scale),
+    -Math.round((camera.left - shake.x) * scale),
+    -Math.round((camera.top - shake.y) * scale),
   );
 
   drawSky(ctx, camera);
@@ -93,7 +107,16 @@ export function renderFrame(
     if (state.plan) drawBeamPlan(ctx, state.plan);
     drawJoints(ctx, state.bridge.joints, state.activeJoint, state.time);
   }
+  drawDroplets(ctx, state.droplets);
   if (state.pointer) drawPointer(ctx, state.pointer);
+}
+
+/** Splash droplets: single light-blue pixels. */
+function drawDroplets(ctx: CanvasRenderingContext2D, droplets: readonly Droplet[]): void {
+  ctx.fillStyle = PALETTE.waterHighlight;
+  for (const { position } of droplets) {
+    ctx.fillRect(Math.round(position.x), Math.round(position.y), 1, 1);
+  }
 }
 
 // ---------------------------------------------------------------------------

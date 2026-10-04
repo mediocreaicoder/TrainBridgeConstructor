@@ -8,6 +8,7 @@ interface ToolbarProps {
   canRedo: boolean;
   canZoomIn: boolean;
   canZoomOut: boolean;
+  muted: boolean;
   onMaterialChange: (material: MaterialId) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -15,12 +16,13 @@ interface ToolbarProps {
   onZoomOut: () => void;
   onPlay: () => void;
   onStop: () => void;
+  onToggleMute: () => void;
 }
 
 /**
- * Material picker plus undo, redo, zoom and play/stop. Two groups, so CSS can
- * stack them along the bottom (portrait) or put them in columns on each side
- * (landscape).
+ * Material picker plus undo, redo, zoom, sound and play/stop. Two groups, so
+ * CSS can stack them along the bottom (portrait) or put them in columns on
+ * each side (landscape).
  */
 export function Toolbar({
   material,
@@ -29,6 +31,7 @@ export function Toolbar({
   canRedo,
   canZoomIn,
   canZoomOut,
+  muted,
   onMaterialChange,
   onUndo,
   onRedo,
@@ -36,6 +39,7 @@ export function Toolbar({
   onZoomOut,
   onPlay,
   onStop,
+  onToggleMute,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -89,6 +93,14 @@ export function Toolbar({
           onClick={onZoomIn}
         >
           +
+        </button>
+        <button
+          type="button"
+          className="toolbar-button"
+          aria-pressed={!muted}
+          onClick={onToggleMute}
+        >
+          {muted ? 'Muted' : 'Sound'}
         </button>
         <button
           type="button"

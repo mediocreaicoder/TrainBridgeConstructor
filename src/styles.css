@@ -176,3 +176,63 @@ body,
     inset -2px -2px 0 #6e1d19,
     inset 2px 2px 0 #e8483c;
 }
+
+/* -------------------------------------------------------------------------
+   Result panel, shown when a run has ended.
+   ------------------------------------------------------------------------- */
+
+.result-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  /* Only the panel itself takes touches; the rest still reaches the game. */
+  pointer-events: none;
+}
+
+.result-panel {
+  pointer-events: auto;
+  max-width: 280px;
+  padding: 16px;
+  text-align: center;
+  font-family: 'Press Start 2P', monospace;
+  color: #fff;
+  background: #2b3a55;
+  border: 2px solid #1c1c1c;
+  box-shadow:
+    inset -3px -3px 0 #1a2438,
+    inset 3px 3px 0 #4a5f86,
+    4px 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+.result-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  text-shadow: 2px 2px 0 #1c1c1c;
+}
+
+.result-arrived .result-title {
+  color: #ffd84a;
+}
+
+.result-lost .result-title {
+  color: #7fb2ee;
+}
+
+.result-body {
+  margin: 0 0 16px;
+  font-size: 8px;
+  line-height: 1.6;
+}
+
+.result-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.result-actions .toolbar-button {
+  padding: 4px 10px;
+}
