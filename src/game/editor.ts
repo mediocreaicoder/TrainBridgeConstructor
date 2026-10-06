@@ -1,5 +1,6 @@
 import {
   beamEnds,
+  canMoveJoint,
   canPlaceBeam,
   findJointNear,
   getJoint,
@@ -251,4 +252,70 @@ function nearest(points: readonly Vec2[], to: Vec2): Vec2 {
 function nearestWithin(points: readonly Vec2[], to: Vec2, radius: number): Vec2 | null {
   const best = nearest(points, to);
   return points.length > 0 && distance(best, to) <= radius ? best : null;
+}
+
+// ---------------------------------------------------------------------------
+// Choosing the material automatically
+// ---------------------------------------------------------------------------
+
+/** A beam this close to horizontal (or flatter) can continue the track. */
+const MAX_TRACK_ANGLE_DEGREES = 30;
+
+/**
+ * With Track selected, the material is picked per beam: a beam that
+ * continues the track (starts on the track and is no steeper than 30°) is
+ * track; anything else (diagonals, beams under the deck) is `support`.
+ *
+ * A joint is on the track if it is one of the bridge ends (`trackEnds`) or
+ * already has a track beam.
+ */
+export function autoMaterial(
+  bridge: Bridge,
+  trackEnds: readonly Vec2[],
+  fromJointId: number,
+  pointer: Vec2,
+  support: MaterialId,
+): MaterialId {
+  const from = getJoint(bridge, fromJointId).position;
+  const onTrack =
+    trackEnds.some((end) => distance(end, from) < 0.5) ||
+    bridge.beams.some(
+      (beam) => beam.material === 'track' && (beam.a === fromJointId || beam.b === fromJointId),
+    );
+  const dx = Math.abs(pointer.x - from.x);
+  const dy = Math.abs(pointer.y - from.y);
+  const flatEnough = dx > 0 && dy <= dx * Math.tan((MAX_TRACK_ANGLE_DEGREES * Math.PI) / 180);
+  return onTrack && flatEnough ? 'track' : support;
+}
+
+// ---------------------------------------------------------------------------
+// Moving a joint (long press)
+// ---------------------------------------------------------------------------
+
+/** How many grid steps around the finger to look for a legal spot. */
+const MOVE_SEARCH_STEPS = 4;
+
+/**
+ * Where a joint dragged towards `wanted` ends up: the grid point nearest to
+ * `wanted` where the move is allowed (see `canMoveJoint`), searching a few
+ * grid steps around it. If there is none, the joint stays where it is.
+ */
+export function planJointMove(
+  bridge: Bridge,
+  terrain: readonly (readonly Vec2[])[],
+  jointId: number,
+  wanted: Vec2,
+  gridSize: number,
+): Vec2 {
+  const centreX = Math.round(wanted.x / gridSize) * gridSize;
+  const centreY = Math.round(wanted.y / gridSize) * gridSize;
+  const candidates: Vec2[] = [];
+  for (let i = -MOVE_SEARCH_STEPS; i <= MOVE_SEARCH_STEPS; i++) {
+    for (let j = -MOVE_SEARCH_STEPS; j <= MOVE_SEARCH_STEPS; j++) {
+      candidates.push({ x: centreX + i * gridSize, y: centreY + j * gridSize });
+    }
+  }
+  candidates.sort((a, b) => distance(a, wanted) - distance(b, wanted));
+  const allowed = candidates.find((p) => canMoveJoint(bridge, terrain, jointId, p));
+  return allowed ?? getJoint(bridge, jointId).position;
 }

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   addBeam,
+  canMoveJoint,
   canPlaceBeam,
   createBridge,
   findBeamNear,
   findJointNear,
+  moveJoint,
   removeBeam,
   type BeamTarget,
 } from './bridge';
@@ -137,5 +139,28 @@ describe('findJointNear / findBeamNear', () => {
   it('finds a beam by distance to its line', () => {
     expect(findBeamNear(bridge, { x: 130, y: 103 }, 4)?.id).toBe(5);
     expect(findBeamNear(bridge, { x: 130, y: 110 }, 4)).toBeNull();
+  });
+});
+
+describe('moveJoint / canMoveJoint', () => {
+  // Joint 4 at (140,100) on a track beam from the left anchor.
+  const bridge = addBeam(createBridge(level.anchors), LEFT_TOP, point(140, 100), 'track');
+
+  it('moves a built joint, and its beams follow', () => {
+    const moved = moveJoint(bridge, 4, { x: 145, y: 95 });
+    expect(moved.joints.find((j) => j.id === 4)?.position).toEqual({ x: 145, y: 95 });
+    expect(bridge.joints.find((j) => j.id === 4)?.position).toEqual({ x: 140, y: 100 });
+  });
+
+  it('allows moves that keep every beam within its length limits', () => {
+    expect(canMoveJoint(bridge, level.terrain, 4, { x: 150, y: 100 })).toBe(true); // 30 = max
+    expect(canMoveJoint(bridge, level.terrain, 4, { x: 155, y: 100 })).toBe(false); // 35
+    expect(canMoveJoint(bridge, level.terrain, 4, { x: 122, y: 100 })).toBe(false); // too short
+  });
+
+  it('refuses anchors, other joints and spots inside the terrain', () => {
+    expect(canMoveJoint(bridge, level.terrain, LEFT_TOP, { x: 110, y: 90 })).toBe(false);
+    expect(canMoveJoint(bridge, level.terrain, 4, { x: 126, y: 130 })).toBe(false); // an anchor
+    expect(canMoveJoint(bridge, level.terrain, 4, { x: 115, y: 110 })).toBe(false); // in the cliff
   });
 });

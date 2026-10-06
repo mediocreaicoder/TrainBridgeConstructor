@@ -40,6 +40,13 @@ What works:
 - Phase 5 is done: six levels with hints and per-level materials, level list, unlocking in
   order, progress saved, Next level. Every level is proven winnable by a test.
 
+- Building feel (2026-10-06): the aiming cursor sits closer to the finger (32 CSS px).
+  With Track selected the material is picked per beam (`autoMaterial()` in `editor.ts`): a beam
+  that continues the track (starts on a bridge end or a joint with track, no steeper than 30°) is
+  track, anything else gets the support material (the one chosen last, else the level's first).
+  Choosing wood/steel/cable explicitly still builds only that. A long press (0.4 s) on a built
+  joint picks it up; dragging moves it on the grid, only to spots where every attached beam
+  stays within its length limits (`planJointMove()`); putting it down is one undo step.
 - Longer beams, bigger levels (2026-10-06): max lengths ×1.5 (track 30, wood 36, steel 48,
   cable 96) and every level scaled to match, with the track at y = 75, so a bridge is made of
   fewer, longer pieces and fills more of the screen. Unit tests now use a fixed test level

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { addBeam, createBridge, type Bridge } from './bridge';
 import {
+  autoMaterial,
   canRedo,
   canUndo,
   commit,
   createHistory,
   MAX_HISTORY,
   planBeam,
+  planJointMove,
   redo,
   COARSE_GRID_SIZE,
   FINE_GRID_SIZE,
@@ -228,5 +230,64 @@ describe('zoom-dependent grid', () => {
     expect(free.to).toEqual({ x: 140, y: 100 });
     const onAnchor = planBeam(bridge, level.terrain, LEFT_TOP, { x: 129, y: 127 }, 'steel', snap);
     expect(onAnchor.target).toEqual({ kind: 'joint', jointId: 1 });
+  });
+});
+
+describe('autoMaterial', () => {
+  // A track beam from the left anchor (joint 0) to a free joint at (140,100): joint 4.
+  const bridge = addBeam(
+    createBridge(level.anchors),
+    LEFT_TOP,
+    { kind: 'point', position: { x: 140, y: 100 } },
+    'track',
+  );
+  const trackEnds = [level.bridgeStart, level.bridgeEnd];
+
+  it('keeps track when the beam continues the track, flat or gently sloped', () => {
+    expect(autoMaterial(bridge, trackEnds, 4, { x: 165, y: 100 }, 'wood')).toBe('track');
+    expect(autoMaterial(bridge, trackEnds, 4, { x: 165, y: 110 }, 'wood')).toBe('track');
+    // From a bridge end, even before any track is built.
+    const empty = createBridge(level.anchors);
+    expect(autoMaterial(empty, trackEnds, LEFT_TOP, { x: 140, y: 100 }, 'wood')).toBe('track');
+  });
+
+  it('switches to the support material for diagonals', () => {
+    expect(autoMaterial(bridge, trackEnds, 4, { x: 155, y: 115 }, 'wood')).toBe('wood');
+    expect(autoMaterial(bridge, trackEnds, 4, { x: 140, y: 120 }, 'steel')).toBe('steel');
+  });
+
+  it('switches to the support material for beams that start off the track', () => {
+    // The low anchor (joint 1) is not on the track, so even a flat beam from it is support.
+    expect(autoMaterial(bridge, trackEnds, 1, { x: 150, y: 130 }, 'wood')).toBe('wood');
+  });
+});
+
+describe('planJointMove', () => {
+  // Joint 4 at (140,100), on a 20-unit track beam from the left anchor (120,100).
+  const bridge = addBeam(
+    createBridge(level.anchors),
+    LEFT_TOP,
+    { kind: 'point', position: { x: 140, y: 100 } },
+    'track',
+  );
+
+  it('moves the joint to the grid point nearest the finger', () => {
+    expect(planJointMove(bridge, level.terrain, 4, { x: 143.6, y: 96.2 }, 5)).toEqual({
+      x: 145,
+      y: 95,
+    });
+  });
+
+  it('stays within the max length of its beams (track: 30)', () => {
+    const moved = planJointMove(bridge, level.terrain, 4, { x: 165, y: 100 }, 5);
+    expect(distance(moved, { x: 120, y: 100 })).toBeLessThanOrEqual(30);
+    expect(moved.x).toBeGreaterThan(140);
+  });
+
+  it('does not move anchors', () => {
+    expect(planJointMove(bridge, level.terrain, LEFT_TOP, { x: 110, y: 90 }, 5)).toEqual({
+      x: 120,
+      y: 100,
+    });
   });
 });

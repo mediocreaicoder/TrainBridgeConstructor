@@ -4,6 +4,8 @@ import {
   createBridge,
   findBeamNear,
   findJointNear,
+  getJoint,
+  moveJoint,
   removeBeam,
   type BeamTarget,
 } from './bridge';
@@ -23,6 +25,7 @@ import { GameAudio } from './audio';
 import { soundCues, summarizeRun, type SoundId } from './cues';
 import { installDebugHook } from './debug';
 import {
+  autoMaterial,
   canRedo,
   canUndo,
   commit,
@@ -30,6 +33,7 @@ import {
   gridSizeFor,
   JOINT_SNAP_RADIUS,
   planBeam,
+  planJointMove,
   redo,
   undo,
   type History,
@@ -80,7 +84,10 @@ const DOUBLE_TAP_CSS_PX = 24;
  * CSS pixels above the finger, so the finger doesn't hide where the beam will
  * end. The lift grows with the first pixels of the drag instead of jumping.
  */
-const TOUCH_LIFT_CSS_PX = 56;
+const TOUCH_LIFT_CSS_PX = 32;
+
+/** Holding a built joint this long (without moving) picks it up to move it. */
+const LONG_PRESS_MS = 400;
 
 /** Zoom factor of the zoom buttons. */
 const ZOOM_STEP = 1.5;
@@ -106,6 +113,7 @@ const AUTO_STOP_SECONDS = 1.5;
 /**
  * What the finger(s) on the screen are doing:
  * - build: one finger that started on a joint; dragging it plans a beam.
+ * - move: a long press on a built joint picked it up; dragging moves it.
  * - pan: one finger that started elsewhere; dragging it moves the view.
  * - pinch: two fingers zoom and move the view.
  * - ignore: a pinch ended with a finger still down; wait until all are up.
@@ -122,6 +130,18 @@ type Gesture =
       touch: boolean;
       /** Current lift of the cursor above the finger, in CSS pixels. Only grows. */
       liftCss: number;
+      /** When the finger went down (performance.now()), to detect a long press. */
+      pressedAt: number;
+    }
+  | {
+      kind: 'move';
+      pointerId: number;
+      jointId: number;
+      startCss: Vec2;
+      /** Where the joint was when it was picked up. */
+      jointStart: Vec2;
+      /** Where it would be put down now. */
+      position: Vec2;
     }
   | {
       kind: 'pan';
@@ -161,6 +181,11 @@ export class Engine {
   private camera: Camera;
   private history: History;
   private material: MaterialId = 'track';
+  /**
+   * With Track selected, beams that don't continue the track get this
+   * material: the support material chosen last, or the level's first one.
+   */
+  private supportMaterial: MaterialId;
   private mode: EngineMode = 'edit';
   /** Time not yet simulated, carried over to the next frame. */
   private unsimulatedSeconds = 0;
@@ -188,6 +213,7 @@ export class Engine {
     this.view = fitView(level);
     this.camera = computeCamera({ width: 1, height: 1 }, level, this.view);
     this.history = createHistory(createBridge(level.anchors));
+    this.supportMaterial = level.allowedMaterials.find((m) => m !== 'track') ?? 'track';
     this.state = {
       time: 0,
       bridge: this.history.present,
@@ -262,6 +288,7 @@ export class Engine {
   /** Material used for the next beams. */
   setMaterial(material: MaterialId): void {
     this.material = material;
+    if (material !== 'track') this.supportMaterial = material;
   }
 
   setMuted(muted: boolean): void {
@@ -381,6 +408,7 @@ export class Engine {
   private update(dt: number): void {
     this.state.time += dt;
     this.updateEffects(dt);
+    this.checkLongPress();
     if (this.mode !== 'run') return;
 
     this.unsimulatedSeconds += dt;
@@ -529,6 +557,7 @@ export class Engine {
           dragging: false,
           touch: event.pointerType === 'touch',
           liftCss: 0,
+          pressedAt: performance.now(),
         }
       : { kind: 'pan', pointerId: event.pointerId, startCss, start, moved: false };
     this.state.activeJoint = fromJoint?.id ?? null;
@@ -559,6 +588,9 @@ export class Engine {
     switch (gesture.kind) {
       case 'build':
         if (event.pointerId === gesture.pointerId) this.moveBuild(gesture, css);
+        break;
+      case 'move':
+        if (event.pointerId === gesture.pointerId) this.moveHeldJoint(gesture, css);
         break;
       case 'pan':
         if (event.pointerId === gesture.pointerId) this.movePan(gesture, css);
@@ -598,7 +630,7 @@ export class Engine {
       this.level.terrain,
       gesture.fromJointId,
       beamEnd,
-      this.material,
+      this.materialFor(gesture.fromJointId, beamEnd),
       { jointRadius, gridSize },
     );
     this.state.pointer = beamEnd;
@@ -633,10 +665,12 @@ export class Engine {
     if (gesture?.kind === 'build' && event.pointerId === gesture.pointerId) {
       const { plan } = this.state;
       if (gesture.dragging && plan?.placement.ok && !cancelled) {
-        this.tryAddBeam(plan.fromJointId, plan.target);
+        this.tryAddBeam(plan.fromJointId, plan.target, plan.material);
       } else if (!gesture.dragging && !cancelled) {
         this.handleTap({ time: event.timeStamp, css: gesture.startCss, position: gesture.start });
       }
+    } else if (gesture?.kind === 'move' && event.pointerId === gesture.pointerId) {
+      if (!cancelled) this.putDownJoint(gesture);
     } else if (gesture?.kind === 'pan' && event.pointerId === gesture.pointerId) {
       if (!gesture.moved && !cancelled) {
         this.handleTap({ time: event.timeStamp, css: gesture.startCss, position: gesture.start });
@@ -649,15 +683,85 @@ export class Engine {
   };
 
   private clearGestureVisuals(): void {
+    // A joint being moved is only a preview until it is put down.
+    this.state.bridge = this.history.present;
     this.state.plan = null;
     this.state.pointer = null;
     this.state.finger = null;
     this.state.activeJoint = null;
   }
 
+  /**
+   * The material for a beam from `fromJointId` towards `end`. With Track
+   * selected it is chosen automatically: track if the beam continues the
+   * track, otherwise the support material (see `autoMaterial`).
+   */
+  private materialFor(fromJointId: number, end: Vec2): MaterialId {
+    if (this.material !== 'track') return this.material;
+    const trackEnds = [this.level.bridgeStart, this.level.bridgeEnd];
+    return autoMaterial(this.history.present, trackEnds, fromJointId, end, this.supportMaterial);
+  }
+
+  // -------------------------------------------------------------------------
+  // Moving a joint: long press on a built joint, then drag
+  // -------------------------------------------------------------------------
+
+  /** Turns a press that has stayed still long enough on a built joint into a move. */
+  private checkLongPress(): void {
+    const gesture = this.gesture;
+    if (gesture?.kind !== 'build' || gesture.dragging) return;
+    if (performance.now() - gesture.pressedAt < LONG_PRESS_MS) return;
+    const joint = getJoint(this.history.present, gesture.fromJointId);
+    if (joint.fixed) return; // anchors can't be moved
+
+    this.lastTap = null;
+    this.gesture = {
+      kind: 'move',
+      pointerId: gesture.pointerId,
+      jointId: joint.id,
+      startCss: gesture.startCss,
+      jointStart: joint.position,
+      position: joint.position,
+    };
+    this.state.activeJoint = joint.id;
+    this.state.pointer = joint.position;
+    this.audio.play('clack'); // a little click: the joint is picked up
+  }
+
+  /**
+   * The joint follows the finger's movement (not the finger itself, so it
+   * doesn't jump), snapped to the grid and kept where all its beams still fit.
+   */
+  private moveHeldJoint(gesture: Extract<Gesture, { kind: 'move' }>, css: Vec2): void {
+    const now = this.cssToWorldPoint(css);
+    const then = this.cssToWorldPoint(gesture.startCss);
+    const wanted = {
+      x: gesture.jointStart.x + now.x - then.x,
+      y: gesture.jointStart.y + now.y - then.y,
+    };
+    const bridge = this.history.present;
+    gesture.position = planJointMove(
+      bridge,
+      this.level.terrain,
+      gesture.jointId,
+      wanted,
+      this.state.gridSize,
+    );
+    this.state.bridge = moveJoint(bridge, gesture.jointId, gesture.position);
+    this.state.pointer = gesture.position;
+    this.state.activeJoint = gesture.jointId;
+  }
+
+  /** Commits the move as one undo step, if the joint actually moved. */
+  private putDownJoint(gesture: Extract<Gesture, { kind: 'move' }>): void {
+    if (distance(gesture.position, gesture.jointStart) < 1e-6) return;
+    const moved = moveJoint(this.history.present, gesture.jointId, gesture.position);
+    this.setHistory(commit(this.history, moved));
+  }
+
   /** Drops a beam being dragged (e.g. when Play is pressed mid-drag). */
   private cancelBuildGesture(): void {
-    if (this.gesture?.kind !== 'build') return;
+    if (this.gesture?.kind !== 'build' && this.gesture?.kind !== 'move') return;
     this.clearGestureVisuals();
     this.gesture = { kind: 'ignore' };
   }

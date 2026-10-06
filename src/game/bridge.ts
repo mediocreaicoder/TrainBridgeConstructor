@@ -116,6 +116,42 @@ export function addBeam(
   return { joints, beams: [...bridge.beams, beam], nextId };
 }
 
+/** Moves a joint, dragging its beams along. Assumes `canMoveJoint` has approved it. */
+export function moveJoint(bridge: Bridge, jointId: number, position: Vec2): Bridge {
+  const joints = bridge.joints.map((joint) =>
+    joint.id === jointId ? { ...joint, position } : joint,
+  );
+  return { ...bridge, joints };
+}
+
+/**
+ * Whether a joint may be moved to `position`: it must be one the player
+ * built (anchors stay put), every beam on it must stay within its material's
+ * length limits, it may not land on another joint or inside the terrain.
+ */
+export function canMoveJoint(
+  bridge: Bridge,
+  terrain: readonly (readonly Vec2[])[],
+  jointId: number,
+  position: Vec2,
+): boolean {
+  if (getJoint(bridge, jointId).fixed) return false;
+  if (findJointNear(bridge, position, 0.5, jointId)) return false;
+  if (terrain.some((polygon) => isStrictlyInsidePolygon(position, polygon))) return false;
+
+  const EPSILON = 1e-6;
+  return bridge.beams
+    .filter((beam) => beam.a === jointId || beam.b === jointId)
+    .every((beam) => {
+      const other = getJoint(bridge, beam.a === jointId ? beam.b : beam.a).position;
+      const length = distance(position, other);
+      return (
+        length >= MIN_BEAM_LENGTH - EPSILON &&
+        length <= MATERIALS[beam.material].maxLength + EPSILON
+      );
+    });
+}
+
 /** Removes a beam, plus any free joint that is left without beams. */
 export function removeBeam(bridge: Bridge, beamId: number): Bridge {
   const beams = bridge.beams.filter((beam) => beam.id !== beamId);

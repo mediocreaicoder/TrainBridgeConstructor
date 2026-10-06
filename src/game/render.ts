@@ -104,7 +104,7 @@ export function renderFrame(
   drawSky(ctx, camera);
   if (level.waterY !== null) drawWater(ctx, camera, level.waterY, state.time);
   // The grid goes under the terrain, so it only shows where a joint can go.
-  if (!state.run) drawGrid(ctx, camera, state.gridSize, state.plan?.to ?? null);
+  if (!state.run) drawGrid(ctx, camera, state.gridSize, state.plan?.to ?? state.pointer);
   for (const polygon of level.terrain) drawTerrain(ctx, camera, polygon);
   for (const pillar of level.pillars) drawPillar(ctx, pillar);
   drawTrack(ctx, camera, level);
@@ -407,12 +407,17 @@ const STRAIN_COLORS = {
   breaking: [0xe8, 0x30, 0x2c],
 } as const;
 
-/** Preview of the beam being dragged: white if it can be built, red if not. */
+/**
+ * Preview of the beam being dragged: drawn as the material it will be made
+ * of (which may have been picked automatically), or as a red line if it
+ * can't be built.
+ */
 function drawBeamPlan(ctx: CanvasRenderingContext2D, plan: BeamPlan): void {
   for (const guide of plan.guides) drawGuide(ctx, guide);
 
   const color = plan.placement.ok ? PALETTE.previewValid : PALETTE.previewInvalid;
-  stampLine(ctx, plan.from, plan.to, color, 0, 0, 1, 1);
+  if (plan.placement.ok) drawMaterialLine(ctx, plan.from, plan.to, plan.material);
+  else stampLine(ctx, plan.from, plan.to, color, 0, 0, 1, 1);
 
   // Hollow square marking where the beam will end.
   const x = Math.round(plan.to.x);
