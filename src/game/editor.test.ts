@@ -8,14 +8,17 @@ import {
   MAX_HISTORY,
   planBeam,
   redo,
+  COARSE_GRID_SIZE,
+  FINE_GRID_SIZE,
+  gridSizeFor,
   snapToGridWithin,
   triangleApexes,
   undo,
 } from './editor';
-import { getLevel } from './level';
+import { TEST_LEVEL } from './testing/testLevel';
 import { distance } from './types';
 
-const level = getLevel(0);
+const level = TEST_LEVEL;
 const LEFT_TOP = 0; // anchor at (120, 100)
 
 /** A bridge with `n` track beams marching right from the left anchor. */
@@ -119,8 +122,8 @@ describe('planBeam', () => {
   });
 
   it('limits a free end to the material max length', () => {
-    const plan = planBeam(bridge, level.terrain, LEFT_TOP, { x: 170, y: 100 }, 'track');
-    expect(plan.to).toEqual({ x: 140, y: 100 });
+    const plan = planBeam(bridge, level.terrain, LEFT_TOP, { x: 175, y: 100 }, 'track');
+    expect(plan.to).toEqual({ x: 150, y: 100 }); // track max is 30
     expect(plan.placement.ok).toBe(true);
   });
 
@@ -199,5 +202,31 @@ describe('triangle snapping', () => {
     }
     const apexes = bridge.joints.filter((j) => !j.fixed && j.position.y === 110);
     expect(apexes.map((j) => j.position.x)).toEqual([130, 150, 170, 190]);
+  });
+});
+
+describe('zoom-dependent grid', () => {
+  it('uses the coarse grid when fine grid points would be too close on screen', () => {
+    // iPhone portrait at zoom 1: about 1.2 CSS px per world unit.
+    expect(gridSizeFor(1.2)).toBe(COARSE_GRID_SIZE);
+    // Zoomed in far enough that 5 units are at least 12 CSS px apart.
+    expect(gridSizeFor(2.4)).toBe(FINE_GRID_SIZE);
+  });
+
+  it('snaps free ends to the coarse grid when given it', () => {
+    const origin = { x: 120, y: 100 };
+    expect(snapToGridWithin(origin, { x: 133, y: 104 }, 24, COARSE_GRID_SIZE)).toEqual({
+      x: 130,
+      y: 100,
+    });
+  });
+
+  it('plans beams on the coarse grid, while joints still win when close', () => {
+    const bridge = createBridge(level.anchors);
+    const snap = { jointRadius: 8, gridSize: COARSE_GRID_SIZE };
+    const free = planBeam(bridge, level.terrain, LEFT_TOP, { x: 136, y: 99 }, 'track', snap);
+    expect(free.to).toEqual({ x: 140, y: 100 });
+    const onAnchor = planBeam(bridge, level.terrain, LEFT_TOP, { x: 129, y: 127 }, 'steel', snap);
+    expect(onAnchor.target).toEqual({ kind: 'joint', jointId: 1 });
   });
 });

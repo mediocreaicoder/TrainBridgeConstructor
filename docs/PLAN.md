@@ -40,6 +40,20 @@ What works:
 - Phase 5 is done: six levels with hints and per-level materials, level list, unlocking in
   order, progress saved, Next level. Every level is proven winnable by a test.
 
+- Longer beams, bigger levels (2026-10-06): max lengths ×1.5 (track 30, wood 36, steel 48,
+  cable 96) and every level scaled to match, with the track at y = 75, so a bridge is made of
+  fewer, longer pieces and fills more of the screen. Unit tests now use a fixed test level
+  (`src/game/testing/testLevel.ts`) instead of level 1. Long Haul was shortened to 180 so its
+  steel reference truss isn't right at the break limit (peak loads of all reference solutions
+  are now at most about 75 %).
+- Visible snap grid (2026-10-06): dots while editing, drawn under the terrain; they light up
+  around the dragged beam end. The grid follows the zoom: 10 units when 5 would be closer than
+  12 CSS px on screen (`gridSizeFor()` in `editor.ts`), otherwise 5. Other control ideas
+  discussed and parked: tap–tap building, a magnifier loupe, a relative (trackpad-style) cursor.
+- Bigger aiming cursor (2026-10-06): on touch, the beam end is a crosshair 56 CSS px above the
+  finger (the lift grows over the first pixels of the drag, so it doesn't jump), with a dotted
+  line down to the finger. The crosshair has a fixed screen size and an open centre where the
+  snapped point (white square) shows.
 - HUD text replaced by toasts (2026-10-04): the level name and hint fade out after 5 s, "?"
   shows them again. Manifest and icons added for "Add to Home Screen" (no address bar).
 
@@ -392,12 +406,12 @@ Decisions:
 
 | # | Name | Idea | Materials | Reference solution |
 | --- | --- | --- | --- | --- |
-| 1 | First Crossing | Short gap (80) | track, wood | Warren truss under the deck |
+| 1 | First Crossing | Short gap (120) | track, wood | Warren truss under the deck |
 | 2 | Stepping Stone | Two short gaps with a rock island | track, wood | A small truss in each gap |
-| 3 | Wide Gap | 120 wide, anchors on the cliff faces | track, wood | Truss + braced props from the low anchors |
-| 4 | From Below | 120 wide, only deep anchors (40 below), dry ravine | track, wood | Truss + a column from each deep anchor |
+| 3 | Wide Gap | 180 wide, anchors on the cliff faces | track, wood | Truss + braced props from the low anchors |
+| 4 | From Below | 180 wide, only deep anchors (60 below), dry ravine | track, wood | Truss + a column from each deep anchor |
 | 5 | Hanging Bridge | No cliff anchors, anchors on pillars above the deck | track, cable | Deck hung from both pillars with cables |
-| 6 | Long Haul | 140 wide, no extra anchors | track, wood, steel | Steel truss (a wooden one breaks) |
+| 6 | Long Haul | 180 wide, no extra anchors | track, wood, steel | Steel truss (a wooden one breaks) |
 
 Ideas for later: a small level editor in dev mode (`?editor`) that exports level JSON; saving
 the player's bridge per level.

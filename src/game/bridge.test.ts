@@ -8,9 +8,9 @@ import {
   removeBeam,
   type BeamTarget,
 } from './bridge';
-import { getLevel } from './level';
+import { TEST_LEVEL } from './testing/testLevel';
 
-const level = getLevel(0);
+const level = TEST_LEVEL;
 // Level 1 anchors: 0 = left top (120,100), 1 = left low (126,130),
 //                  2 = right top (200,100), 3 = right low (194,130).
 const LEFT_TOP = 0;
@@ -94,14 +94,14 @@ describe('canPlaceBeam', () => {
   });
 
   it('accepts a beam of exactly the max length and exactly the min length', () => {
-    expect(check(point(140, 100))).toEqual({ ok: true }); // track max is 20
+    expect(check(point(150, 100))).toEqual({ ok: true }); // track max is 30
     expect(check(point(125, 100))).toEqual({ ok: true }); // min is 5
   });
 
   it('rejects beams that are too short or too long', () => {
     expect(check(point(123, 100))).toEqual({ ok: false, problem: 'tooShort' });
-    expect(check(point(145, 100))).toEqual({ ok: false, problem: 'tooLong' });
-    expect(check(point(145, 100), 'cable')).toEqual({ ok: true });
+    expect(check(point(155, 100))).toEqual({ ok: false, problem: 'tooLong' });
+    expect(check(point(155, 100), 'cable')).toEqual({ ok: true });
   });
 
   it('rejects a beam from a joint to itself', () => {

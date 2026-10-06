@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Bridge } from './bridge';
-import { getLevel } from './level';
+import { TEST_LEVEL } from './testing/testLevel';
 import type { MaterialId } from './materials';
 import { createSimulation, stepSimulation, type Simulation } from './physics';
 import { createRun, stepRun, type Run } from './run';
 import { BridgeBuilder } from './testing/bridgeBuilder';
 import { HANDCAR } from './train';
 
-const level = getLevel(0);
+const level = TEST_LEVEL;
 const STEP = 1 / 120;
 
 const DECK = [120, 140, 160, 180, 200].map((x) => ({ x, y: 100 }));

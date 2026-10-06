@@ -27,7 +27,7 @@ import {
   canUndo,
   commit,
   createHistory,
-  GRID_SIZE,
+  gridSizeFor,
   JOINT_SNAP_RADIUS,
   planBeam,
   redo,
@@ -76,10 +76,11 @@ const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_CSS_PX = 24;
 
 /**
- * On touch screens the dragged beam end is drawn this many CSS pixels above
- * the finger, so the finger doesn't hide where the beam will end.
+ * On touch screens the dragged beam end (the aiming cursor) sits this many
+ * CSS pixels above the finger, so the finger doesn't hide where the beam will
+ * end. The lift grows with the first pixels of the drag instead of jumping.
  */
-const TOUCH_LIFT_CSS_PX = 20;
+const TOUCH_LIFT_CSS_PX = 56;
 
 /** Zoom factor of the zoom buttons. */
 const ZOOM_STEP = 1.5;
@@ -117,8 +118,10 @@ type Gesture =
       start: Vec2;
       fromJointId: number;
       dragging: boolean;
-      /** How far to lift the beam end above the pointer, in world units. */
-      lift: number;
+      /** Touch drags aim with a cursor lifted above the finger; mouse drags don't. */
+      touch: boolean;
+      /** Current lift of the cursor above the finger, in CSS pixels. Only grows. */
+      liftCss: number;
     }
   | {
       kind: 'pan';
@@ -194,6 +197,9 @@ export class Engine {
       run: null,
       droplets: [],
       shake: 0,
+      gridSize: gridSizeFor(1),
+      finger: null,
+      worldUnitsPerCssPx: 1,
     };
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
 
@@ -451,6 +457,9 @@ export class Engine {
   private updateCamera(): void {
     if (this.screen.width === 0) return;
     this.camera = computeCamera(this.screen, this.level, this.view);
+    const scale = cssPixelsPerUnit(this.screen, this.level, this.view);
+    this.state.gridSize = gridSizeFor(scale);
+    this.state.worldUnitsPerCssPx = 1 / scale;
     // Resizing the backing store clears it, so only do it when the size
     // really changes. The next tick redraws.
     if (this.canvas.width !== this.camera.canvasWidth) this.canvas.width = this.camera.canvasWidth;
@@ -518,7 +527,8 @@ export class Engine {
           start,
           fromJointId: fromJoint.id,
           dragging: false,
-          lift: event.pointerType === 'touch' ? this.cssToWorldRadius(TOUCH_LIFT_CSS_PX) : 0,
+          touch: event.pointerType === 'touch',
+          liftCss: 0,
         }
       : { kind: 'pan', pointerId: event.pointerId, startCss, start, moved: false };
     this.state.activeJoint = fromJoint?.id ?? null;
@@ -567,12 +577,20 @@ export class Engine {
     }
     if (!gesture.dragging) return;
 
-    const position = this.cssToWorldPoint(css);
-    const beamEnd = { x: position.x, y: position.y - gesture.lift };
-    // A smaller snap radius when zoomed in lets the player reach grid points
-    // right next to a joint, but never less than half a grid step.
-    const snapRadius = Math.max(
-      GRID_SIZE / 2,
+    // The cursor rises above the finger as the drag gets going, up to the full
+    // lift, and then stays there (it doesn't sink if the finger moves back).
+    if (gesture.touch) {
+      const moved = distance(css, gesture.startCss);
+      gesture.liftCss = Math.max(gesture.liftCss, Math.min(TOUCH_LIFT_CSS_PX, moved));
+    }
+    const finger = this.cssToWorldPoint(css);
+    const beamEnd = { x: finger.x, y: finger.y - this.cssToWorldRadius(gesture.liftCss) };
+    // The grid follows the zoom (state.gridSize). A smaller joint snap radius
+    // when zoomed in lets the player reach grid points right next to a joint,
+    // but never less than half a grid step.
+    const gridSize = this.state.gridSize;
+    const jointRadius = Math.max(
+      gridSize / 2,
       this.cssToWorldRadius(JOINT_SNAP_CSS_PX, JOINT_SNAP_RADIUS),
     );
     const plan = planBeam(
@@ -581,9 +599,10 @@ export class Engine {
       gesture.fromJointId,
       beamEnd,
       this.material,
-      snapRadius,
+      { jointRadius, gridSize },
     );
     this.state.pointer = beamEnd;
+    this.state.finger = gesture.touch ? finger : null;
     this.state.plan = plan;
     this.state.activeJoint = plan.target.kind === 'joint' ? plan.target.jointId : null;
   }
@@ -632,6 +651,7 @@ export class Engine {
   private clearGestureVisuals(): void {
     this.state.plan = null;
     this.state.pointer = null;
+    this.state.finger = null;
     this.state.activeJoint = null;
   }
 

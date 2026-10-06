@@ -63,8 +63,16 @@ export const canRedo = (history: History): boolean => history.future.length > 0;
 // Planning a beam while dragging
 // ---------------------------------------------------------------------------
 
-/** Free beam ends snap to a world grid with this spacing. */
-export const GRID_SIZE = 5;
+/**
+ * Free beam ends snap to a world grid. Zoomed in, the grid is fine; zoomed
+ * out, a fine grid would be denser than a finger can aim, so it gets coarser.
+ * The coarse size matches the triangles: half a 20-unit track beam.
+ */
+export const FINE_GRID_SIZE = 5;
+export const COARSE_GRID_SIZE = 10;
+
+/** Grid points must be at least this far apart on screen to be easy to hit. */
+const MIN_GRID_SPACING_CSS_PX = 12;
 
 /**
  * While dragging, the end snaps to an existing joint within this distance.
@@ -72,6 +80,26 @@ export const GRID_SIZE = 5;
  * zoomed in, so grid points next to a joint can be reached.
  */
 export const JOINT_SNAP_RADIUS = 8;
+
+/** How a dragged beam end snaps. The engine adapts both to the zoom level. */
+export interface SnapSettings {
+  /** Snap to an existing joint (or triangle apex) within this distance. */
+  jointRadius: number;
+  /** Otherwise snap to a grid with this spacing. */
+  gridSize: number;
+}
+
+export const DEFAULT_SNAP: SnapSettings = {
+  jointRadius: JOINT_SNAP_RADIUS,
+  gridSize: FINE_GRID_SIZE,
+};
+
+/** The finest grid whose points are at least MIN_GRID_SPACING_CSS_PX apart on screen. */
+export function gridSizeFor(cssPixelsPerUnit: number): number {
+  return FINE_GRID_SIZE * cssPixelsPerUnit >= MIN_GRID_SPACING_CSS_PX
+    ? FINE_GRID_SIZE
+    : COARSE_GRID_SIZE;
+}
 
 /** Support materials that snap to triangle apexes over and under track beams. */
 const TRIANGLE_MATERIALS: ReadonlySet<MaterialId> = new Set(['wood', 'steel']);
@@ -105,11 +133,11 @@ export function planBeam(
   fromJointId: number,
   pointer: Vec2,
   material: MaterialId,
-  snapRadius = JOINT_SNAP_RADIUS,
+  snap: SnapSettings = DEFAULT_SNAP,
 ): BeamPlan {
   const from = getJoint(bridge, fromJointId).position;
   const guides = TRIANGLE_MATERIALS.has(material) ? triangleApexes(bridge, terrain) : [];
-  const target = resolveTarget(bridge, fromJointId, pointer, material, snapRadius, guides);
+  const target = resolveTarget(bridge, fromJointId, pointer, material, snap, guides);
   return {
     fromJointId,
     target,
@@ -153,12 +181,12 @@ function resolveTarget(
   fromJointId: number,
   pointer: Vec2,
   material: MaterialId,
-  snapRadius: number,
+  snap: SnapSettings,
   guides: readonly Vec2[],
 ): BeamTarget {
   // Snap to whichever is closer: an existing joint or a triangle apex.
-  const nearJoint = findJointNear(bridge, pointer, snapRadius, fromJointId);
-  const nearGuide = nearestWithin(guides, pointer, snapRadius);
+  const nearJoint = findJointNear(bridge, pointer, snap.jointRadius, fromJointId);
+  const nearGuide = nearestWithin(guides, pointer, snap.jointRadius);
   const jointIsCloser =
     nearJoint !== null &&
     (nearGuide === null || distance(nearJoint.position, pointer) <= distance(nearGuide, pointer));
@@ -166,7 +194,7 @@ function resolveTarget(
   if (nearGuide) return { kind: 'point', position: nearGuide };
 
   const from = getJoint(bridge, fromJointId).position;
-  const point = snapToGridWithin(from, pointer, MATERIALS[material].maxLength);
+  const point = snapToGridWithin(from, pointer, MATERIALS[material].maxLength, snap.gridSize);
 
   const jointOnPoint = findJointNear(bridge, point, 0.5);
   if (jointOnPoint) return { kind: 'joint', jointId: jointOnPoint.id };
@@ -181,16 +209,21 @@ function resolveTarget(
  * outside. Of the four grid corners around that point, the nearest one that
  * is still within reach wins. Plain rounding could land just outside reach.
  */
-export function snapToGridWithin(origin: Vec2, pointer: Vec2, maxLength: number): Vec2 {
+export function snapToGridWithin(
+  origin: Vec2,
+  pointer: Vec2,
+  maxLength: number,
+  gridSize = FINE_GRID_SIZE,
+): Vec2 {
   const clamped = clampToCircle(origin, pointer, maxLength);
 
-  const left = Math.floor(clamped.x / GRID_SIZE) * GRID_SIZE;
-  const top = Math.floor(clamped.y / GRID_SIZE) * GRID_SIZE;
+  const left = Math.floor(clamped.x / gridSize) * gridSize;
+  const top = Math.floor(clamped.y / gridSize) * gridSize;
   const corners: Vec2[] = [
     { x: left, y: top },
-    { x: left + GRID_SIZE, y: top },
-    { x: left, y: top + GRID_SIZE },
-    { x: left + GRID_SIZE, y: top + GRID_SIZE },
+    { x: left + gridSize, y: top },
+    { x: left, y: top + gridSize },
+    { x: left + gridSize, y: top + gridSize },
   ];
 
   const reachable = corners.filter((corner) => distance(origin, corner) <= maxLength);

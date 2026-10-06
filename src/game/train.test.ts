@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addBeam, createBridge, type Bridge } from './bridge';
-import { getLevel } from './level';
+import { TEST_LEVEL } from './testing/testLevel';
 import { createSimulation, GRAVITY } from './physics';
 import type { MaterialId } from './materials';
 import {
@@ -13,7 +13,7 @@ import {
   type Vehicle,
 } from './train';
 
-const level = getLevel(0);
+const level = TEST_LEVEL;
 const LEFT_TOP = 0; // anchor (120, 100)
 const RIGHT_TOP = 2; // anchor (200, 100)
 const STEP = 1 / 120;

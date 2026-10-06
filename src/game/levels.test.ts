@@ -26,77 +26,77 @@ const CASES: LevelCase[] = [
   {
     name: 'First Crossing',
     solution: (b) => {
-      const deck = along([120, 140, 160, 180, 200], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'wood');
+      const deck = along([100, 130, 160, 190, 220], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'wood');
     },
-    naive: (b) => b.chain(along([120, 140, 160, 180, 200], 100), 'track'),
+    naive: (b) => b.chain(along([100, 130, 160, 190, 220], 75), 'track'),
   },
   {
     name: 'Stepping Stone',
     solution: (b) => {
-      b.chain(along([100, 120, 135, 150, 170, 185, 200, 220], 100), 'track');
-      b.truss(along([100, 120, 135, 150], 100), 10, 'wood');
-      b.truss(along([170, 185, 200, 220], 100), 10, 'wood');
+      b.chain(along([70, 100, 125, 145, 175, 195, 220, 250], 75), 'track');
+      b.truss(along([70, 100, 125, 145], 75), 15, 'wood');
+      b.truss(along([175, 195, 220, 250], 75), 15, 'wood');
     },
-    naive: (b) => b.chain(along([100, 120, 135, 150, 170, 185, 200, 220], 100), 'track'),
+    naive: (b) => b.chain(along([70, 100, 125, 145, 175, 195, 220, 250], 75), 'track'),
   },
   {
     name: 'Wide Gap',
     solution: (b) => {
-      const deck = along([100, 120, 140, 160, 180, 200, 220], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'wood');
+      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'wood');
       // A braced prop from each low anchor up to the first two truss apexes.
       for (const [anchor, prop, near, far] of [
-        [{ x: 106, y: 128 }, { x: 125, y: 125 }, { x: 110, y: 110 }, { x: 130, y: 110 }],
-        [{ x: 214, y: 128 }, { x: 195, y: 125 }, { x: 210, y: 110 }, { x: 190, y: 110 }],
+        [{ x: 80, y: 115 }, { x: 110, y: 115 }, { x: 85, y: 90 }, { x: 115, y: 90 }],
+        [{ x: 240, y: 115 }, { x: 210, y: 115 }, { x: 235, y: 90 }, { x: 205, y: 90 }],
       ] as const) {
         b.beam(anchor, near, 'wood').beam(anchor, prop, 'wood');
         b.beam(prop, near, 'wood').beam(prop, far, 'wood');
       }
     },
     naive: (b) => {
-      const deck = along([100, 120, 140, 160, 180, 200, 220], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'wood');
+      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'wood');
     },
   },
   {
     name: 'From Below',
     solution: (b) => {
-      const deck = along([100, 120, 140, 160, 180, 200, 220], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'wood');
-      // A column from each low anchor up into the truss.
+      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'wood');
+      // A column from each deep anchor up into the truss.
       for (const [anchor, top, left, right] of [
-        [{ x: 120, y: 140 }, { x: 120, y: 120 }, { x: 110, y: 110 }, { x: 130, y: 110 }],
-        [{ x: 200, y: 140 }, { x: 200, y: 120 }, { x: 190, y: 110 }, { x: 210, y: 110 }],
+        [{ x: 100, y: 135 }, { x: 100, y: 105 }, { x: 85, y: 90 }, { x: 115, y: 90 }],
+        [{ x: 220, y: 135 }, { x: 220, y: 105 }, { x: 205, y: 90 }, { x: 235, y: 90 }],
       ] as const) {
         b.beam(anchor, top, 'wood').beam(top, left, 'wood').beam(top, right, 'wood');
       }
     },
     naive: (b) => {
-      const deck = along([100, 120, 140, 160, 180, 200, 220], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'wood');
+      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'wood');
     },
   },
   {
     name: 'Hanging Bridge',
     solution: (b) => {
-      b.chain(along([110, 130, 150, 170, 190, 210], 100), 'track');
-      b.beam({ x: 106, y: 55 }, { x: 130, y: 100 }, 'cable');
-      b.beam({ x: 106, y: 55 }, { x: 150, y: 100 }, 'cable');
-      b.beam({ x: 214, y: 55 }, { x: 170, y: 100 }, 'cable');
-      b.beam({ x: 214, y: 55 }, { x: 190, y: 100 }, 'cable');
+      b.chain(along([85, 115, 145, 175, 205, 235], 75), 'track');
+      b.beam({ x: 80, y: 30 }, { x: 115, y: 75 }, 'cable');
+      b.beam({ x: 80, y: 30 }, { x: 145, y: 75 }, 'cable');
+      b.beam({ x: 240, y: 30 }, { x: 175, y: 75 }, 'cable');
+      b.beam({ x: 240, y: 30 }, { x: 205, y: 75 }, 'cable');
     },
-    naive: (b) => b.chain(along([110, 130, 150, 170, 190, 210], 100), 'track'),
+    naive: (b) => b.chain(along([85, 115, 145, 175, 205, 235], 75), 'track'),
   },
   {
     name: 'Long Haul',
     solution: (b) => {
-      const deck = along([90, 110, 130, 150, 170, 190, 210, 230], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'steel');
+      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'steel');
     },
     naive: (b) => {
-      const deck = along([90, 110, 130, 150, 170, 190, 210, 230], 100);
-      b.chain(deck, 'track').truss(deck, 10, 'wood');
+      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
+      b.chain(deck, 'track').truss(deck, 15, 'wood');
     },
   },
 ];
@@ -128,7 +128,7 @@ function ruleViolations(level: Level, bridge: Bridge): string[] {
 
 function play(level: Level, bridge: Bridge): RunOutcome | null {
   const run = createRun(level, bridge);
-  for (let t = 0; t < 16 && run.vehicle.outcome === null; t += STEP) {
+  for (let t = 0; t < 30 && run.vehicle.outcome === null; t += STEP) {
     stepRun(run, level, VEHICLES[level.vehicle], STEP);
   }
   return run.vehicle.outcome;

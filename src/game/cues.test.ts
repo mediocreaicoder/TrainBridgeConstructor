@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { soundCues, type RunSummary } from './cues';
-import { getLevel, type Level } from './level';
+import type { Level } from './level';
+import { TEST_LEVEL } from './testing/testLevel';
 
-const level = getLevel(0);
+const level = TEST_LEVEL;
 const dryLevel: Level = { ...level, waterY: null };
 
 const rolling: RunSummary = {

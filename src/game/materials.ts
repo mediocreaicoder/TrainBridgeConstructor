@@ -29,7 +29,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
   track: {
     id: 'track',
     label: 'Track',
-    maxLength: 20,
+    maxLength: 30,
     massPerLength: 1,
     stiffness: 4e7,
     breakStrain: 0.0035,
@@ -38,7 +38,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
   wood: {
     id: 'wood',
     label: 'Wood',
-    maxLength: 24,
+    maxLength: 36,
     massPerLength: 0.6,
     stiffness: 3e7,
     breakStrain: 0.004,
@@ -47,7 +47,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
   steel: {
     id: 'steel',
     label: 'Steel',
-    maxLength: 32,
+    maxLength: 48,
     massPerLength: 1.5,
     stiffness: 1.2e8,
     breakStrain: 0.008,
@@ -56,7 +56,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
   cable: {
     id: 'cable',
     label: 'Cable',
-    maxLength: 64,
+    maxLength: 96,
     massPerLength: 0.2,
     stiffness: 8e7,
     breakStrain: 0.006,

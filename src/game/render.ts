@@ -28,6 +28,12 @@ export interface FrameState {
   droplets: Droplet[];
   /** Seconds of screen shake left (after a beam breaks). */
   shake: number;
+  /** Spacing of the snap grid shown while editing; follows the zoom. */
+  gridSize: number;
+  /** Where the finger is during a touch drag; the cursor (`pointer`) is lifted above it. */
+  finger: Vec2 | null;
+  /** World units per CSS pixel at the current zoom, for things drawn at a fixed screen size. */
+  worldUnitsPerCssPx: number;
 }
 
 /** A small, limited palette keeps the retro look consistent. */
@@ -58,6 +64,7 @@ const PALETTE = {
   flagEnd: '#e8483c',
   gapHint: '#ffffff',
   pointer: '#ffffff',
+  gridDot: '#ffffff',
   stone: '#8a8f98',
   stoneLight: '#b4b9c2',
   stoneDark: '#5c616b',
@@ -96,6 +103,8 @@ export function renderFrame(
 
   drawSky(ctx, camera);
   if (level.waterY !== null) drawWater(ctx, camera, level.waterY, state.time);
+  // The grid goes under the terrain, so it only shows where a joint can go.
+  if (!state.run) drawGrid(ctx, camera, state.gridSize, state.plan?.to ?? null);
   for (const polygon of level.terrain) drawTerrain(ctx, camera, polygon);
   for (const pillar of level.pillars) drawPillar(ctx, pillar);
   drawTrack(ctx, camera, level);
@@ -112,7 +121,7 @@ export function renderFrame(
     drawJoints(ctx, state.bridge.joints, state.activeJoint, state.time);
   }
   drawDroplets(ctx, state.droplets);
-  if (state.pointer) drawPointer(ctx, state.pointer);
+  if (state.pointer) drawAimCursor(ctx, state.pointer, state.finger, state.worldUnitsPerCssPx);
 }
 
 /** Splash droplets: single light-blue pixels. */
@@ -228,6 +237,37 @@ function drawTrackSegment(
   }
   ctx.fillStyle = PALETTE.rail;
   ctx.fillRect(fromX, groundY - 3, toX - fromX, 1);
+}
+
+/** Grid dots near the dragged beam end light up, so it's clear where it will snap. */
+const GRID_FOCUS_CELLS = 3;
+
+/**
+ * The snap grid as single-pixel dots: faint everywhere, brighter around
+ * `focus` (the end of the beam being dragged).
+ */
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  camera: Camera,
+  gridSize: number,
+  focus: Vec2 | null,
+): void {
+  const focusRadius = GRID_FOCUS_CELLS * gridSize;
+  const firstX = Math.ceil(camera.left / gridSize) * gridSize;
+  const firstY = Math.ceil(camera.top / gridSize) * gridSize;
+  const right = camera.left + camera.viewWidth;
+  const bottom = camera.top + camera.viewHeight;
+
+  ctx.save();
+  ctx.fillStyle = PALETTE.gridDot;
+  for (let y = firstY; y < bottom; y += gridSize) {
+    for (let x = firstX; x < right; x += gridSize) {
+      const near = focus !== null && Math.hypot(x - focus.x, y - focus.y) <= focusRadius;
+      ctx.globalAlpha = near ? 0.8 : 0.35;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  ctx.restore();
 }
 
 /**
@@ -424,14 +464,52 @@ function drawJoints(
 }
 
 /** A small crosshair under the finger. */
-function drawPointer(ctx: CanvasRenderingContext2D, p: Vec2): void {
-  const x = Math.round(p.x);
-  const y = Math.round(p.y);
+/** Aiming cursor size in CSS pixels, so it looks the same at every zoom level. */
+const CURSOR_ARM_CSS_PX = 10;
+const CURSOR_GAP_CSS_PX = 3;
+
+/**
+ * The aiming cursor: a crosshair with a dark outline, so it shows on sky,
+ * water and ground. While a finger drags, a dotted line joins the finger to
+ * the cursor lifted above it.
+ */
+function drawAimCursor(
+  ctx: CanvasRenderingContext2D,
+  cursor: Vec2,
+  finger: Vec2 | null,
+  worldUnitsPerCssPx: number,
+): void {
+  if (finger) drawFingerLine(ctx, finger, cursor);
+
+  // Sizes in whole world units (pixels), but at least a few, so it stays visible.
+  // The gap is at least 3 so the snap marker (a 5×5 square) shows inside it.
+  const arm = Math.max(3, Math.round(CURSOR_ARM_CSS_PX * worldUnitsPerCssPx));
+  const gap = Math.max(3, Math.round(CURSOR_GAP_CSS_PX * worldUnitsPerCssPx));
+  const x = Math.round(cursor.x);
+  const y = Math.round(cursor.y);
+  const arms = [
+    [x - gap - arm, y, arm, 1],
+    [x + gap + 1, y, arm, 1],
+    [x, y - gap - arm, 1, arm],
+    [x, y + gap + 1, 1, arm],
+  ] as const;
+
+  ctx.fillStyle = PALETTE.outline;
+  for (const [ax, ay, w, h] of arms) ctx.fillRect(ax - 1, ay - 1, w + 2, h + 2);
   ctx.fillStyle = PALETTE.pointer;
-  ctx.fillRect(x - 4, y, 3, 1);
-  ctx.fillRect(x + 2, y, 3, 1);
-  ctx.fillRect(x, y - 4, 1, 3);
-  ctx.fillRect(x, y + 2, 1, 3);
+  for (const [ax, ay, w, h] of arms) ctx.fillRect(ax, ay, w, h);
+}
+
+/** Every other pixel of the line from the finger up to the cursor. */
+function drawFingerLine(ctx: CanvasRenderingContext2D, finger: Vec2, cursor: Vec2): void {
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = PALETTE.pointer;
+  let index = 0;
+  forEachLinePixel(finger, cursor, (x, y) => {
+    if (index++ % 2 === 0) ctx.fillRect(x, y, 1, 1);
+  });
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
