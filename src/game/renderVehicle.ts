@@ -15,7 +15,7 @@ const SPRITE_SIZE = 24;
 const ORIGIN = { x: 12, y: 21 };
 
 /** The rail's top is this far above the joint line the vehicle position is on. */
-const RAIL_HEIGHT = 3;
+const RAIL_HEIGHT = 1;
 
 const WHEEL_RADIUS = 2;
 const WHEEL_X = 4;

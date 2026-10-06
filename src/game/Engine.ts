@@ -528,7 +528,8 @@ export class Engine {
   // -------------------------------------------------------------------------
 
   private handlePointerDown = (event: PointerEvent): void => {
-    // Any touch is a user gesture, so audio may start now (needed on iOS).
+    // Try to start audio as early as possible. Desktop browsers accept this;
+    // iOS only accepts it on pointerup (see handlePointerUp).
     this.audio.unlock();
     // Keep receiving move/up events even if the finger slides off the canvas.
     this.canvas.setPointerCapture(event.pointerId);
@@ -659,6 +660,9 @@ export class Engine {
 
   private handlePointerUp = (event: PointerEvent): void => {
     if (!this.pointers.delete(event.pointerId)) return;
+    // On iOS, lifting the finger (not putting it down) counts as the user
+    // gesture that may start audio.
+    this.audio.unlock();
     const gesture = this.gesture;
     const cancelled = event.type === 'pointercancel';
 

@@ -43,11 +43,16 @@ export class GameAudio {
   /** The most recent sounds, newest last. For the dev debug hook. */
   readonly history: SoundId[] = [];
 
-  /** Creates or resumes the audio context. Call from a user gesture (iOS). */
+  /**
+   * Creates or resumes the audio context. Call from a user gesture: on iOS
+   * only some events count (touchend/pointerup and click, not touchstart), so
+   * it is safe to call this from several handlers.
+   */
   unlock(): void {
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext;
       if (!AudioContextClass) return; // no Web Audio: play silently
+      playEvenWhenSilenced();
       this.ctx = new AudioContextClass();
       this.master = this.ctx.createGain();
       this.master.gain.value = this.muted ? 0 : MASTER_VOLUME;
@@ -55,7 +60,11 @@ export class GameAudio {
       this.noise = createNoiseBuffer(this.ctx);
       void this.loadRecordings(this.ctx);
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    // iOS can also leave it 'interrupted' (after a call or the app was hidden).
+    if (this.ctx.state !== 'running') {
+      void this.ctx.resume();
+      playSilence(this.ctx);
+    }
   }
 
   setMuted(muted: boolean): void {
@@ -278,6 +287,35 @@ function envelope(
   // Exponential ramps can't reach 0, so fade to almost nothing.
   gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
   return gain;
+}
+
+/**
+ * Safari's Audio Session API (iOS 16.4+). Not in TypeScript's DOM types yet,
+ * so it is described here.
+ */
+interface NavigatorWithAudioSession {
+  audioSession?: { type: string };
+}
+
+/**
+ * By default iOS treats Web Audio like a ringtone, so the ring/silent switch
+ * mutes it. Declaring the page's audio as "playback" (like a music player)
+ * keeps the game audible. Older iOS versions just ignore this.
+ */
+function playEvenWhenSilenced(): void {
+  const session = (navigator as NavigatorWithAudioSession).audioSession;
+  if (session) session.type = 'playback';
+}
+
+/**
+ * Plays one silent sample. Starting a sound inside the user gesture is what
+ * finally wakes Web Audio up on some iOS versions.
+ */
+function playSilence(ctx: AudioContext): void {
+  const source = ctx.createBufferSource();
+  source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+  source.connect(ctx.destination);
+  source.start(0);
 }
 
 /** One second of white noise, reused by every noisy sound. */

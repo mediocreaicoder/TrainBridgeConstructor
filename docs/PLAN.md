@@ -40,6 +40,12 @@ What works:
 - Phase 5 is done: six levels with hints and per-level materials, level list, unlocking in
   order, progress saved, Next level. Every level is proven winnable by a test.
 
+- Beams on the grid (2026-10-06): every material is drawn centred on the joint line, so
+  horizontal and vertical beams lie on the grid dots (track: rail one row above, planks on the
+  line and below; wood: 3 px wide). The bank track and the handcar moved down to match.
+- Audio on iPhone (2026-10-06): sound was silent because of the ring/silent switch.
+  `navigator.audioSession.type = 'playback'` (iOS 16.4+) keeps the game audible anyway, and audio
+  is also unlocked on pointerup (iOS only counts touchend/click as a gesture for audio).
 - Building feel (2026-10-06): the aiming cursor sits closer to the finger (32 CSS px).
   With Track selected the material is picked per beam (`autoMaterial()` in `editor.ts`): a beam
   that continues the track (starts on a bridge end or a joint with track, no steeper than 30°) is

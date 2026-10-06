@@ -233,10 +233,11 @@ function drawTrackSegment(
   ctx.fillStyle = PALETTE.sleeper;
   const firstSleeper = Math.ceil(fromX / sleeperSpacing) * sleeperSpacing;
   for (let x = firstSleeper; x < toX - 2; x += sleeperSpacing) {
-    ctx.fillRect(x, groundY - 2, 3, 2);
+    ctx.fillRect(x, groundY, 3, 2);
   }
+  // The rail sits one pixel above the ground line, like on the bridge.
   ctx.fillStyle = PALETTE.rail;
-  ctx.fillRect(fromX, groundY - 3, toX - fromX, 1);
+  ctx.fillRect(fromX, groundY - 1, toX - fromX, 1);
 }
 
 /** Grid dots near the dragged beam end light up, so it's clear where it will snap. */
@@ -299,7 +300,7 @@ function drawGapHint(ctx: CanvasRenderingContext2D, level: Level, time: number):
   // Pixel dashes: 3 on, 3 off.
   for (let d = 4; d < length - 4; d += 6) {
     const t = d / length;
-    ctx.fillRect(Math.round(a.x + (b.x - a.x) * t), Math.round(a.y + (b.y - a.y) * t) - 3, 3, 1);
+    ctx.fillRect(Math.round(a.x + (b.x - a.x) * t), Math.round(a.y + (b.y - a.y) * t) - 1, 3, 1);
   }
   ctx.restore();
 }
@@ -340,13 +341,15 @@ function drawMaterialLine(
 ): void {
   switch (material) {
     case 'track':
-      // Planks just below the rail line, matching the track on the banks.
-      stampLine(ctx, a, b, bodyColor ?? PALETTE.sleeper, -1, -2, 1, 2);
-      stampLine(ctx, a, b, PALETTE.rail, 0, -3, 1, 1);
+      // 3 pixels centred on the joint line, like the track on the banks:
+      // the rail on top, planks on the line and the row below.
+      stampLine(ctx, a, b, bodyColor ?? PALETTE.sleeper, 0, -1, 1, 3);
+      stampLine(ctx, a, b, PALETTE.rail, 0, -1, 1, 1);
       break;
     case 'wood':
-      stampLine(ctx, a, b, bodyColor ?? PALETTE.woodDark, -1, -1, 2, 2);
-      if (!bodyColor) stampLine(ctx, a, b, PALETTE.wood, 0, -1, 1, 1);
+      // 3 pixels wide, centred on the joint line, with a lighter middle.
+      stampLine(ctx, a, b, bodyColor ?? PALETTE.woodDark, -1, -1, 3, 3);
+      if (!bodyColor) stampLine(ctx, a, b, PALETTE.wood, 0, 0, 1, 1);
       break;
     case 'steel':
       stampLine(ctx, a, b, PALETTE.outline, -1, -1, 3, 3);
