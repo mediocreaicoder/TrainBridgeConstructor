@@ -378,6 +378,12 @@ Decisions:
 - UI: a Sound/Muted toggle in the toolbar, saved in `localStorage` (`ui/preferences.ts`, every
   access in try/catch), and `ui/ResultPanel.tsx`.
 
+Recordings (2026-10-06): the user added an applause and a scream recording. Converted (in the
+browser, no extra tools) to mono 22 kHz 16-bit WAV in `public/sounds/` (applause: first 5 s with a
+fade-out, 6.9 MB → 216 KB; scream: normalised, it clipped). They replace the synthesised `arrive`
+jingle and `scream`. Sources and licences belong in `public/sounds/CREDITS.md` (still TODO). The
+originals are in `src/game/audio/` and are not used by the game.
+
 Note: on iPhone, the ring/silent switch mutes Web Audio.
 
 ---

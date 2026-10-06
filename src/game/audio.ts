@@ -12,8 +12,16 @@ import type { SoundId } from './cues';
  * called from a tap or click handler before anything can be heard.
  */
 
-/** Recordings that replace synthesised sounds, e.g. `scream: 'sounds/scream.mp3'`. */
-const SOUND_FILES: Partial<Record<SoundId, string>> = {};
+/**
+ * Recordings that replace synthesised sounds. Mono 22 kHz WAV: small, and
+ * plays on every iPhone. Sources and licences: `public/sounds/CREDITS.md`.
+ */
+const SOUND_FILES: Partial<Record<SoundId, string>> = {
+  /** The bridge held: the crowd cheers. */
+  arrive: 'sounds/applause.wav',
+  /** The bridge failed and the handcar goes over the edge. */
+  scream: 'sounds/scream.wav',
+};
 
 /** A sound may not repeat faster than this (seconds), so e.g. creaks don't pile up. */
 const MIN_INTERVAL: Partial<Record<SoundId, number>> = {

@@ -1,6 +1,0 @@
-First Crossing   arrived peak=0.73 (wood)
-Stepping Stone   arrived peak=0.35 (wood)
-Wide Gap         arrived peak=0.40 (wood)
-From Below       arrived peak=0.61 (wood)
-Hanging Bridge   arrived peak=0.17 (track)
-Long Haul        arrived peak=0.69 (track)
