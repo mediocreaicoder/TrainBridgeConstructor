@@ -507,7 +507,9 @@ pull each other when one falls instead of rolling on at constant speed.
 
 ## 10. Phase 8: Landing page and high scores
 
-Status: 8a in progress (started 2026-10-07). 8b later.
+Status: 8a built and the worker deployed (2026-10-07) at
+https://train-bridge-scores.mediocreaicoder.workers.dev (D1 `train-bridge-scores`, region EEUR).
+The game gets the address from `.env` (`VITE_API_URL`). 8b later.
 
 The phase is split in two (decided 2026-10-07):
 

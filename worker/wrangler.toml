@@ -2,9 +2,11 @@
 name = "train-bridge-scores"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
+# Not a secret; lets wrangler run without looking the account up.
+account_id = "59b5b8599f89c7c41b252ce430075720"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "train-bridge-scores"
-database_id = "TODO"
+database_id = "dcdd5a06-8b95-47d8-b8d2-22d01b5bb0e7"
 migrations_dir = "migrations"
