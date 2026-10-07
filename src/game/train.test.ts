@@ -77,7 +77,7 @@ describe('stepTrain', () => {
     for (let i = 0; i < 120; i++) train = stepTrain(train, HANDCAR, track, level, STEP);
     expect(front(train).status).toBe('rolling');
     expect(front(train).position.x).toBeCloseTo(startX + HANDCAR.speed, 5);
-    expect(front(train).angle).toBe(0);
+    expect(front(train).direction).toEqual({ x: 1, y: 0 });
   });
 
   it('crosses a complete deck and arrives', () => {
@@ -132,7 +132,7 @@ describe('stepTrain', () => {
     while (train.outcome === null) {
       train = stepTrain(train, HANDCAR, track, level, STEP);
       lowest = Math.max(lowest, front(train).position.y);
-      steepestNoseDown = Math.max(steepestNoseDown, front(train).angle);
+      steepestNoseDown = Math.max(steepestNoseDown, front(train).direction.y);
     }
     expect(train.outcome).toBe('arrived');
     expect(lowest).toBeCloseTo(110, 0);

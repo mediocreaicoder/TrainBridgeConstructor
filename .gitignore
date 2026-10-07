@@ -5,3 +5,9 @@ dist/
 
 # Screenshots and logs from the Playwright MCP browser
 .playwright-mcp/
+
+# Local overrides (e.g. VITE_API_URL pointing at wrangler dev)
+*.local
+
+# Wrangler's local state (local D1 database for wrangler dev)
+.wrangler/

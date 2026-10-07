@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { EngineEvent, EngineMode } from './game/Engine';
 import { getLevel, LEVELS, levelIndexFromQuery, type Level } from './game/level';
+import type { Bridge } from './game/bridge';
 import type { MaterialId } from './game/materials';
 import {
   isUnlocked,
@@ -62,7 +63,9 @@ function initialLevelIndex(stars: LevelStars): number {
 interface RunResult {
   outcome: RunOutcome;
   train: VehicleId;
-  /** Over budget costs a star. */
+  /** The bridge that was tested and its cost. Over budget costs a star. */
+  bridge: Bridge;
+  cost: number;
   overBudget: boolean;
 }
 
@@ -112,7 +115,13 @@ export function App() {
           break;
         case 'runFinished': {
           const overBudget = event.cost > level.budget;
-          setResult({ outcome: event.outcome, train: event.train, overBudget });
+          setResult({
+            outcome: event.outcome,
+            train: event.train,
+            bridge: event.bridge,
+            cost: event.cost,
+            overBudget,
+          });
           if (event.outcome === 'arrived') {
             recordWin(level.id, starsEarned(VEHICLES[event.train].stars, event.cost, level.budget));
           }
@@ -198,6 +207,10 @@ export function App() {
       {mode === 'edit' && result && !levelsOpen && (
         <ResultPanel
           outcome={result.outcome}
+          levelId={level.id}
+          train={result.train}
+          bridge={result.bridge}
+          cost={result.cost}
           hasWater={level.waterY !== null}
           trainName={VEHICLES[result.train].name}
           stars={starsFor(level.id, stars)}

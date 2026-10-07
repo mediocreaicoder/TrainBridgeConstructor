@@ -1,8 +1,15 @@
-import type { RunOutcome } from '../game/train';
+import type { Bridge } from '../game/bridge';
+import type { RunOutcome, VehicleId } from '../game/train';
+import { HighScores } from './HighScores';
 import { Stars } from './Stars';
 
 interface ResultPanelProps {
   outcome: RunOutcome;
+  levelId: number;
+  train: VehicleId;
+  /** The bridge that was tested, and its cost, for the high-score list. */
+  bridge: Bridge;
+  cost: number;
   /** Falling into water is a splash; into a dry ravine, a crash. */
   hasWater: boolean;
   /** E.g. "handcar" or "goods train". */
@@ -28,10 +35,15 @@ const TEXT = {
 /**
  * Shown after a run has ended, with the level's stars. After a win the player
  * can send a heavier train across the same bridge (for more stars) or move
- * on; after a loss, try again or fix the bridge.
+ * on, and see (and join) the high-score list; after a loss, try again or fix
+ * the bridge.
  */
 export function ResultPanel({
   outcome,
+  levelId,
+  train,
+  bridge,
+  cost,
   hasWater,
   trainName,
   stars,
@@ -65,6 +77,15 @@ export function ResultPanel({
           <Stars count={stars} />
         </div>
         {won && overBudget && <p className="result-note">Over budget: one star less</p>}
+        {won && (
+          <HighScores
+            levelId={levelId}
+            train={train}
+            bridge={bridge}
+            cost={cost}
+            overBudget={overBudget}
+          />
+        )}
         <div className="result-actions">
           {heavier && (
             <button type="button" className={buttonClass('heavier')} onClick={heavier}>

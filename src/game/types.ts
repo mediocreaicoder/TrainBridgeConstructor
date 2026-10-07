@@ -8,6 +8,13 @@ export interface Vec2 {
   y: number;
 }
 
+/**
+ * Distance between two points. Uses Math.sqrt rather than Math.hypot: sqrt is
+ * exact IEEE arithmetic, so every JavaScript engine gives the same last bit,
+ * which the shared physics needs (see docs/PLAN.md, determinism).
+ */
 export function distance(a: Vec2, b: Vec2): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
 }

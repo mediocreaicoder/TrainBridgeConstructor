@@ -26,9 +26,13 @@ updated as decisions are made.
   straight to a level (and skips the lock).
 - `npm run lint`: ESLint.
 - `npm run test`: Vitest (Node, no DOM). Tests live next to the code as `*.test.ts`.
-- `npm run build`: `tsc --noEmit` + `vite build`.
+- `npm run build`: `tsc --noEmit` (game and worker) + `vite build`.
 - Deploy: every push to `main` runs `.github/workflows/deploy.yml` (lint, test, build, Pages
   deploy).
+- High-score worker (`worker/`, Cloudflare Worker + D1): `cd worker && npx wrangler dev` runs it
+  on :8787 with a local D1 (`npx wrangler d1 migrations apply train-bridge-scores --local` first).
+  The game reads `VITE_API_URL` (`.env`; override in `.env.development.local`); without it,
+  or with the server down, the game runs without high scores.
 
 ## The game in short
 
@@ -66,6 +70,9 @@ updated as decisions are made.
   engine: it creates the Engine in a useEffect and forwards events and commands. React never
   runs per frame. `App.tsx` holds the UI state (level, train, material, stars, results);
   `preferences.ts` saves settings and progress in `localStorage` (always in try/catch).
+  `api.ts` talks to the high-score worker; `HighScores.tsx` is the list in the result panel.
+- `worker/`: the high-score API (phase 8a: stores submitted bridges, no validation yet).
+  Tests run its real SQL on Node's built-in SQLite (`worker/src/testing/fakeD1.ts`).
 - Pixel look: the canvas backing store is a whole number of pixels per world unit
   (`pixelScale`), and everything is drawn on whole world units, so it stays crisp. The
   320×180 playfield is always fully visible at zoom 1; CSS scales the canvas with

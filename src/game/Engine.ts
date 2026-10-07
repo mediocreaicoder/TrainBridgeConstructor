@@ -9,6 +9,7 @@ import {
   moveJoint,
   removeBeam,
   type BeamTarget,
+  type Bridge,
 } from './bridge';
 import {
   computeCamera,
@@ -61,6 +62,8 @@ export type EngineEvent =
       train: VehicleId;
       /** What the bridge that was tested costs. */
       cost: number;
+      /** The bridge that was tested, for submitting it to the high-score list. */
+      bridge: Bridge;
     };
 
 export type EngineListener = (event: EngineEvent) => void;
@@ -462,8 +465,9 @@ export class Engine {
     const { outcome } = run.train;
     if (outcome && this.secondsSinceOutcome === null) {
       this.secondsSinceOutcome = 0;
-      const cost = bridgeCost(this.history.present);
-      this.emit({ type: 'runFinished', outcome, train: this.runningTrain, cost });
+      const bridge = this.history.present;
+      const cost = bridgeCost(bridge);
+      this.emit({ type: 'runFinished', outcome, train: this.runningTrain, cost, bridge });
     } else if (this.secondsSinceOutcome !== null) {
       this.secondsSinceOutcome += SIMULATION_STEP;
       if (this.secondsSinceOutcome >= AUTO_STOP_SECONDS) this.stop();

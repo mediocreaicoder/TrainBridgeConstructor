@@ -78,7 +78,8 @@ function drawCar(
 
   ctx.save();
   ctx.translate(snap(car.position.x), snap(car.position.y - RAIL_HEIGHT));
-  ctx.rotate(car.angle);
+  // Drawing may use trigonometry: it never feeds back into the simulation.
+  ctx.rotate(Math.atan2(car.direction.y, car.direction.x) + car.spinAngle);
   ctx.drawImage(canvas, -ORIGIN.x, -ORIGIN.y);
   ctx.restore();
 }

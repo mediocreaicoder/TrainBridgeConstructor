@@ -106,13 +106,19 @@ export interface Car {
   kind: CarKind;
   /** The point midway between the axles, on the joint line of the track. */
   position: Vec2;
-  /** Tilt in radians. Positive is nose down (y points down, so clockwise). */
-  angle: number;
+  /**
+   * Which way the car points, as a unit vector from its rear wheel to its
+   * front wheel. Stored as a vector rather than an angle so the simulation
+   * needs no trigonometry (see docs/PLAN.md, determinism). y > 0 is nose down.
+   */
+  direction: Vec2;
   /** Distance rolled. Drives the wheel animation. */
   distance: number;
   /** Used while falling. */
   velocity: Vec2;
+  /** How fast a falling car turns (radians per second), and how far it has turned. Drawing only. */
   spin: number;
+  spinAngle: number;
   status: CarStatus;
 }
 
@@ -176,10 +182,11 @@ export function createTrain(level: Level, spec: TrainSpec): Train {
     return {
       kind: carSpec.kind,
       position: { x, y: level.bridgeStart.y },
-      angle: 0,
+      direction: { x: 1, y: 0 },
       distance: 0,
       velocity: { x: 0, y: 0 },
       spin: 0,
+      spinAngle: 0,
       status: 'rolling' as const,
     };
   });
@@ -295,7 +302,7 @@ function findTrackUnder(
 /** Where a car's two wheels touch the track, from its position and tilt. */
 function wheelPositions(car: Car, spec: CarSpec): [Vec2, Vec2] {
   const half = spec.wheelBase / 2;
-  const tilt = Math.sin(car.angle) * half;
+  const tilt = car.direction.y * half;
   const { x, y } = car.position;
   return [
     { x: x + half, y: y + tilt },
@@ -342,10 +349,12 @@ function roll(
   const [front, rear] = wheelPositions(moved, spec);
   const frontY = trackHeightAt(track, front.x, front.y);
   const rearY = trackHeightAt(track, rear.x, rear.y);
-  const angle =
-    frontY !== null && rearY !== null ? Math.atan2(frontY - rearY, spec.wheelBase) : car.angle;
+  const direction =
+    frontY !== null && rearY !== null
+      ? unitVector(spec.wheelBase, frontY - rearY)
+      : car.direction;
 
-  return { ...car, position: { x, y: centreY }, angle, distance: car.distance + speed * dt };
+  return { ...car, position: { x, y: centreY }, direction, distance: car.distance + speed * dt };
 }
 
 /** Leaves the track with its current speed and direction, and starts to tip forward. */
@@ -353,7 +362,7 @@ function startFalling(car: Car, speed: number): Car {
   return {
     ...car,
     status: 'falling',
-    velocity: { x: speed * Math.cos(car.angle), y: speed * Math.sin(car.angle) },
+    velocity: { x: speed * car.direction.x, y: speed * car.direction.y },
     spin: FALL_SPIN,
   };
 }
@@ -367,7 +376,13 @@ function fall(car: Car, level: Level, dt: number): Car {
     ...car,
     position,
     velocity,
-    angle: car.angle + car.spin * dt,
+    spinAngle: car.spinAngle + car.spin * dt,
     status: position.y >= bottom ? 'sunk' : 'falling',
   };
+}
+
+/** (x, y) scaled to length 1, using only exact arithmetic. */
+function unitVector(x: number, y: number): Vec2 {
+  const length = Math.sqrt(x * x + y * y);
+  return { x: x / length, y: y / length };
 }

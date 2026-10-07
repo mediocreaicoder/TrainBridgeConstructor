@@ -10,6 +10,8 @@ import { TRAIN_ORDER, type VehicleId } from '../game/train';
 const MUTED_KEY = 'train-bridge-constructor.muted';
 const STARS_KEY = 'train-bridge-constructor.level-stars';
 const TRAIN_KEY = 'train-bridge-constructor.train';
+const PLAYER_KEY = 'train-bridge-constructor.player-id';
+const NICKNAME_KEY = 'train-bridge-constructor.nickname';
 /** Older versions only saved which levels were completed; each counts as 1 star. */
 const COMPLETED_KEY = 'train-bridge-constructor.completed-levels';
 
@@ -46,6 +48,27 @@ export function loadTrain(): VehicleId {
 
 export function saveTrain(train: VehicleId): void {
   write(TRAIN_KEY, train);
+}
+
+/**
+ * A random id that ties this browser's scores together, created on first use.
+ * Not a secret and not a login: clearing storage makes a new player.
+ */
+export function loadPlayerId(): string {
+  const saved = read(PLAYER_KEY);
+  if (saved) return saved;
+  const id = crypto.randomUUID();
+  write(PLAYER_KEY, id);
+  return id;
+}
+
+/** The name shown on the high-score lists, or '' if the player hasn't picked one. */
+export function loadNickname(): string {
+  return read(NICKNAME_KEY) ?? '';
+}
+
+export function saveNickname(nickname: string): void {
+  write(NICKNAME_KEY, nickname);
 }
 
 function read(key: string): string | null {

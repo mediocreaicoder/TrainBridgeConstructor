@@ -398,3 +398,89 @@ body,
   fill: currentColor;
   filter: drop-shadow(1px 1px 0 #1c1c1c);
 }
+
+/* -------------------------------------------------------------------------
+   High scores in the result panel.
+   ------------------------------------------------------------------------- */
+
+.scores {
+  margin: 0 0 14px;
+  font-size: 7px;
+  line-height: 1.6;
+}
+
+.scores-title {
+  margin: 0 0 6px;
+  font-size: 8px;
+  color: #ffd84a;
+}
+
+.scores-list {
+  margin: 0 0 6px;
+  padding: 4px 6px;
+  list-style: none;
+  text-align: left;
+  background: #1a2438;
+  /* Ten rows fit on a phone in portrait; in landscape the list scrolls. */
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.scores-list li {
+  display: flex;
+  gap: 6px;
+}
+
+.scores-own {
+  color: #ffd84a;
+}
+
+.scores-rank {
+  min-width: 2.5em;
+  text-align: right;
+}
+
+.scores-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scores-note {
+  margin: 4px 0;
+}
+
+.scores-error {
+  color: #ff6a5c;
+}
+
+.scores-submit {
+  margin: 4px auto 0;
+}
+
+.scores-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.scores-input {
+  width: 9em;
+  padding: 4px 6px;
+  font-family: inherit;
+  /* 16px stops iOS Safari from zooming in when the field gets focus. */
+  font-size: 16px;
+  color: #1c1c1c;
+  background: #fff;
+  border: 2px solid #1c1c1c;
+  border-radius: 0;
+  /* The body turns text selection off for the game; typing needs it back. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.scores-form .scores-note {
+  flex-basis: 100%;
+}

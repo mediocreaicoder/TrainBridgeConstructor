@@ -20,6 +20,13 @@ import { distance, type Vec2 } from './types';
  * For speed, a Simulation is changed in place by `stepSimulation`.
  */
 
+/**
+ * Bump this whenever a change makes a bridge behave differently in a run
+ * (physics, trains, materials, levels). High-score lists are kept per
+ * version, so a bump starts every list afresh (docs/PLAN.md, phase 8).
+ */
+export const PHYSICS_VERSION = 1;
+
 /** Gravity in world units per second². Exaggerated, as games do. Shared with vehicles. */
 export const GRAVITY = 160;
 
@@ -151,7 +158,9 @@ function integrate(
   gravity: number,
   h: number,
 ): void {
-  const damping = Math.exp(-DAMPING * h);
+  // 1 - kh is exp(-kh) to well under 0.001 % for this small h, and unlike
+  // Math.exp it gives the same result on every JavaScript engine.
+  const damping = 1 - DAMPING * h;
   sim.particles.forEach((particle, index) => {
     particle.previous = { ...particle.position };
     if (particle.inverseMass === 0) return;
@@ -188,7 +197,7 @@ function solveConstraint(sim: Simulation, constraint: Constraint, h: number): vo
 
   const dx = b.position.x - a.position.x;
   const dy = b.position.y - a.position.y;
-  const length = Math.hypot(dx, dy);
+  const length = Math.sqrt(dx * dx + dy * dy);
   if (length === 0) return;
 
   const material = MATERIALS[constraint.material];

@@ -507,7 +507,55 @@ pull each other when one falls instead of rolling on at constant speed.
 
 ## 10. Phase 8: Landing page and high scores
 
-Status: planned (2026-10-07).
+Status: 8a in progress (started 2026-10-07). 8b later.
+
+The phase is split in two (decided 2026-10-07):
+
+- **8a: simplest thing that works, to get it live now.** The server stores what the client sends,
+  with no game validation. The frontend stays as it is, plus a "Submit score" button and a top-10
+  list in the result panel.
+- **8b: later, once enough iterations have made the game playable.** Server-side verification,
+  the landing page, hash routing, replays and everything else described further down in this
+  section.
+
+### 8a: first version (now)
+
+Decisions (2026-10-07):
+
+- **No server-side validation yet.** The client sends level, train, cost and the bridge; the
+  worker checks only that the body is well-formed (types, sizes, nickname length) and stores it.
+  Faked scores are possible and accepted for now.
+- **Submitting**: a "Submit score" button in the result panel after a win, only for bridges within
+  the budget (checked by the client). The first time, the player picks a nickname (3–16
+  characters), which is remembered. `playerId` is a random UUID in `localStorage`.
+- **List**: after submitting (or when the result panel opens after a win), the result panel shows
+  the top 10 for that level and train (cheapest bridge first, earliest wins ties) and the
+  player's own rank. Nothing else in the frontend changes.
+- One row per player per level, train and `PHYSICS_VERSION`; a new submission replaces it only if
+  it is cheaper. The physics version is stored from the start, so lists can start fresh when it
+  is bumped (decided earlier).
+- The bridge JSON is stored with every score, so 8b can re-verify and replay it later.
+- CORS allows any origin (the data is public and there are no cookies), so testing from the
+  phone on the LAN dev server works too. No rate limiting yet.
+- The fixes for determinism made at the start of the phase are kept (Math.sqrt instead of
+  Math.hypot, damping without Math.exp, car direction as a unit vector); they are needed for 8b.
+- Also kept from the earlier decisions: wrangler and @cloudflare/workers-types as dev
+  dependencies, Worker tests with Vitest and a fake D1, wrangler logged in locally, and the
+  Cloudflare token and account id as GitHub secrets.
+
+API (8a):
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /scores?level=1&vehicle=goods&player=<uuid>` | Top 10 `{ entries: [{ rank, nickname, cost }], you: { rank, cost } \| null }` |
+| `POST /scores` | Body `{ levelId, vehicleId, physicsVersion, playerId, nickname, cost, bridge }`, returns `{ rank, improved }` |
+
+### 8b: later (the full plan below)
+
+Earlier decisions that still apply to 8b: only bridges within the budget go on the lists; lists
+start fresh when `PHYSICS_VERSION` is bumped; replays of other players' bridges unlock after
+your own win with the same train (enforced by the server); every material is allowed on every
+level, so verification checks materials against `MATERIALS`.
 
 Goal: a landing page where people pick a level and play it, and a global high-score list per
 level and train, ranked by the cheapest bridge that gets the train across. New versions of both
@@ -725,12 +773,11 @@ invalid bridge is rejected; and one push to `main` deploys both the game and the
 - ~~Sound: generated sounds, or CC0 recordings?~~ Decided: generated now, recordings later.
 - Whether the train should brake or keep going when the bridge starts to fail.
 - High scores (phase 8):
-  - Do over-budget bridges count on the list, or only bridges within the level's budget?
+  - ~~Over-budget bridges on the list?~~ Decided: only within budget.
   - If `verifyRun` doesn't fit the free CPU limit: verify in the background (Cron Trigger), or
     pay for Workers Paid?
-  - When `PHYSICS_VERSION` is bumped: start fresh lists, or re-verify stored bridges with the
-    new physics and keep the ones that still win?
-  - Should replays of other players' bridges be public (it makes copying the best bridge easy)?
+  - ~~When `PHYSICS_VERSION` is bumped?~~ Decided: start fresh lists.
+  - ~~Public replays?~~ Decided: after your own win with the same train.
   - Custom domain, or keep `github.io` and `workers.dev`?
 
 ---

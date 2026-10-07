@@ -1,0 +1,10 @@
+# Cloudflare Worker for the high-score lists. See docs/PLAN.md, phase 8.
+name = "train-bridge-scores"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "train-bridge-scores"
+database_id = "TODO"
+migrations_dir = "migrations"
