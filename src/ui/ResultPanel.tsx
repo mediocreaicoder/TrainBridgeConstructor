@@ -9,6 +9,8 @@ interface ResultPanelProps {
   trainName: string;
   /** The level's best stars so far (including this run). */
   stars: number;
+  /** The bridge cost more than the budget, so this win earned a star less. */
+  overBudget: boolean;
   onTryAgain: () => void;
   onEdit: () => void;
   /** After a win: run the next heavier train on the same bridge. Null if there is none. */
@@ -33,6 +35,7 @@ export function ResultPanel({
   hasWater,
   trainName,
   stars,
+  overBudget,
   onTryAgain,
   onEdit,
   onHeavierTrain,
@@ -61,6 +64,7 @@ export function ResultPanel({
         <div className="result-stars">
           <Stars count={stars} />
         </div>
+        {won && overBudget && <p className="result-note">Over budget: one star less</p>}
         <div className="result-actions">
           {heavier && (
             <button type="button" className={buttonClass('heavier')} onClick={heavier}>

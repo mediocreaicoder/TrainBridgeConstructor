@@ -23,6 +23,8 @@ export interface Material {
   breakStrain: number;
   /** Cables only pull: they go slack instead of pushing back when squeezed. */
   tensionOnly: boolean;
+  /** Price per world unit of beam length, counted against the level's budget. */
+  costPerLength: number;
 }
 
 export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
@@ -34,6 +36,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
     stiffness: 4e7,
     breakStrain: 0.0035,
     tensionOnly: false,
+    costPerLength: 2,
   },
   wood: {
     id: 'wood',
@@ -43,6 +46,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
     stiffness: 3e7,
     breakStrain: 0.004,
     tensionOnly: false,
+    costPerLength: 1,
   },
   steel: {
     id: 'steel',
@@ -52,6 +56,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
     stiffness: 1.2e8,
     breakStrain: 0.008,
     tensionOnly: false,
+    costPerLength: 3,
   },
   cable: {
     id: 'cable',
@@ -61,6 +66,7 @@ export const MATERIALS: Readonly<Record<MaterialId, Material>> = {
     stiffness: 8e7,
     breakStrain: 0.006,
     tensionOnly: true,
+    costPerLength: 2,
   },
 };
 

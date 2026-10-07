@@ -468,6 +468,20 @@ result panel offers "Heavier train". The best stars per level are saved (older s
 counts as 1 star), shown in the level list, and 1 star unlocks the next level. Sound on/off moved
 to the HUD to make room for the train button.
 
+Budget (decided 2026-10-07): materials have a price per unit of length (wood 1, track 2,
+cable 2, steel 3, in `materials.ts`); `bridgeCost()` sums length × price. Each level has a
+`budget`, about 10 % above its strong (4-star) reference bridge, rounded up to 50:
+
+| Level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Budget | 1150 | 1550 | 3100 | 3100 | 2550 | 3100 | 1150 | 1950 | 3100 |
+
+The cost shows top left ("$ 240 / 1150", red when over). Going over budget is allowed but costs a
+star (`starsEarned()` in `progress.ts`): the handcar then earns none, so the next level stays
+locked and "Next level" isn't offered. `levels.test.ts` checks that both reference bridges are
+within budget. The reference bridges are not optimal (all-steel), so smarter bridges come in
+well under.
+
 - Cars with people (handcar, shunter, engine, coaches) scream when they go over the edge, one
   scream per car; every car splashes when it hits the water.
 - The toast and the result panel name the train ("Here comes the goods train!").
@@ -487,8 +501,7 @@ pull each other when one falls instead of rolling on at constant speed.
   redrawn only on resize; today the dirt speckles are drawn every frame.
 - Pixel sprites for trains and materials, and parallax clouds or mountains in the background.
 - Optional haptics on beam breaks (not supported in iOS Safari; skip if it adds complexity).
-- Budget per level (explicitly "not yet" in the wish list; plan for it in `Level` but don't
-  build it).
+- ~~Budget per level~~: done (see phase 6).
 
 ---
 

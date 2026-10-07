@@ -14,6 +14,7 @@ const level: Level = {
   id: 0,
   name: 'Test',
   hint: '',
+  budget: 1000,
   width: 320,
   height: 180,
   terrain: [],

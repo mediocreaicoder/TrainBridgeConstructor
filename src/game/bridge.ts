@@ -56,6 +56,15 @@ export function targetPosition(bridge: Bridge, target: BeamTarget): Vec2 {
   return target.kind === 'joint' ? getJoint(bridge, target.jointId).position : target.position;
 }
 
+/** What the bridge costs: every beam's length times its material's price, rounded. */
+export function bridgeCost(bridge: Bridge): number {
+  const total = bridge.beams.reduce((sum, beam) => {
+    const [a, b] = beamEnds(bridge, beam);
+    return sum + distance(a, b) * MATERIALS[beam.material].costPerLength;
+  }, 0);
+  return Math.round(total);
+}
+
 /** The two end positions of a beam. */
 export function beamEnds(bridge: Bridge, beam: Beam): [Vec2, Vec2] {
   return [getJoint(bridge, beam.a).position, getJoint(bridge, beam.b).position];

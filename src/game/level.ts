@@ -12,6 +12,12 @@ export interface Level {
   name: string;
   /** One line shown in the HUD while building: what this level is about. */
   hint: string;
+  /**
+   * What the bridge may cost (see bridgeCost). Going over costs a star. Set
+   * about 10 % above the strong reference bridge in levels.test.ts, so every
+   * star can be earned within it.
+   */
+  budget: number;
   width: number;
   height: number;
   /** Closed polygons, filled as solid ground. Top edges get grass. */
@@ -61,6 +67,7 @@ export const LEVELS: readonly Level[] = [
     id: 1,
     name: 'First Crossing',
     hint: 'Drag from a joint to build. Triangles under the track make it strong',
+    budget: 1150,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -88,6 +95,7 @@ export const LEVELS: readonly Level[] = [
     id: 2,
     name: 'Stepping Stone',
     hint: 'Two short gaps. The rock in the middle can carry weight too',
+    budget: 1550,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -128,6 +136,7 @@ export const LEVELS: readonly Level[] = [
     id: 3,
     name: 'Wide Gap',
     hint: 'A wider gap. Prop the bridge up from the anchors on the cliffs',
+    budget: 3100,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -155,6 +164,7 @@ export const LEVELS: readonly Level[] = [
     id: 4,
     name: 'From Below',
     hint: 'The only help is deep down. Build up from the low anchors',
+    budget: 3100,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -184,6 +194,7 @@ export const LEVELS: readonly Level[] = [
     id: 5,
     name: 'Hanging Bridge',
     hint: 'No ground to stand on. Hang the track from the pillars with cables',
+    budget: 2550,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -208,6 +219,7 @@ export const LEVELS: readonly Level[] = [
     id: 6,
     name: 'Long Haul',
     hint: 'A long way across. Steel is strong and reaches far',
+    budget: 3100,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -233,6 +245,7 @@ export const LEVELS: readonly Level[] = [
     id: 7,
     name: 'Bare Cliffs',
     hint: 'No anchors on the cliffs. The bridge has to carry itself',
+    budget: 1150,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -258,6 +271,7 @@ export const LEVELS: readonly Level[] = [
     id: 8,
     name: 'Ledges',
     hint: 'Spread the weight onto the anchors on the cliffs',
+    budget: 1950,
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -285,6 +299,7 @@ export const LEVELS: readonly Level[] = [
     id: 9,
     name: 'Grand Span',
     hint: 'A long span. Brace the track from above and below',
+    budget: 3100,
     width: WIDTH,
     height: HEIGHT,
     terrain: [

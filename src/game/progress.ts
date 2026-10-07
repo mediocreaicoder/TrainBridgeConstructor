@@ -31,3 +31,12 @@ export function startingLevelIndex(levelIds: readonly number[], stars: LevelStar
   const index = levelIds.findIndex((id) => starsFor(id, stars) === 0);
   return index === -1 ? Math.max(0, levelIds.length - 1) : index;
 }
+
+/**
+ * Stars for a train that made it across: the train's stars, minus one if the
+ * bridge cost more than the level's budget (so an expensive bridge carrying
+ * the handcar earns nothing).
+ */
+export function starsEarned(trainStars: number, cost: number, budget: number): number {
+  return Math.max(0, cost > budget ? trainStars - 1 : trainStars);
+}

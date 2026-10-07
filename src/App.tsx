@@ -2,7 +2,14 @@ import { useCallback, useRef, useState } from 'react';
 import type { EngineEvent, EngineMode } from './game/Engine';
 import { getLevel, LEVELS, levelIndexFromQuery, type Level } from './game/level';
 import type { MaterialId } from './game/materials';
-import { startingLevelIndex, starsFor, withResult, type LevelStars } from './game/progress';
+import {
+  isUnlocked,
+  startingLevelIndex,
+  starsEarned,
+  starsFor,
+  withResult,
+  type LevelStars,
+} from './game/progress';
 import {
   heavierTrain,
   TRAIN_ORDER,
@@ -10,6 +17,7 @@ import {
   type RunOutcome,
   type VehicleId,
 } from './game/train';
+import { Budget } from './ui/Budget';
 import { GameCanvas, type GameControls } from './ui/GameCanvas';
 import { Hud } from './ui/Hud';
 import { LevelSelect } from './ui/LevelSelect';
@@ -54,6 +62,8 @@ function initialLevelIndex(stars: LevelStars): number {
 interface RunResult {
   outcome: RunOutcome;
   train: VehicleId;
+  /** Over budget costs a star. */
+  overBudget: boolean;
 }
 
 export function App() {
@@ -70,13 +80,15 @@ export function App() {
   const [message, setMessage] = useState<ToastMessage | null>(() => levelToast(level));
   const hideMessage = useCallback(() => setMessage(null), []);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
+  /** What the bridge being built costs. */
+  const [cost, setCost] = useState(0);
   const [zoom, setZoom] = useState({ canZoomIn: true, canZoomOut: false });
   const gameRef = useRef<GameControls>(null);
 
   /** Saves the stars a winning train earned on this level, if it is a new best. */
-  const recordWin = useCallback((levelId: number, winner: VehicleId) => {
+  const recordWin = useCallback((levelId: number, earned: number) => {
     setStars((previous) => {
-      const next = withResult(previous, levelId, VEHICLES[winner].stars);
+      const next = withResult(previous, levelId, earned);
       if (next !== previous) saveLevelStars(next);
       return next;
     });
@@ -87,6 +99,7 @@ export function App() {
       switch (event.type) {
         case 'historyChanged':
           setHistory({ canUndo: event.canUndo, canRedo: event.canRedo });
+          setCost(event.cost);
           setResult(null); // the bridge changed, so the last result is out of date
           break;
         case 'zoomChanged':
@@ -97,13 +110,17 @@ export function App() {
           // A new run starts undecided. Back in edit mode the result panel shows it.
           if (event.mode === 'run') setResult(null);
           break;
-        case 'runFinished':
-          setResult({ outcome: event.outcome, train: event.train });
-          if (event.outcome === 'arrived') recordWin(level.id, event.train);
+        case 'runFinished': {
+          const overBudget = event.cost > level.budget;
+          setResult({ outcome: event.outcome, train: event.train, overBudget });
+          if (event.outcome === 'arrived') {
+            recordWin(level.id, starsEarned(VEHICLES[event.train].stars, event.cost, level.budget));
+          }
           break;
+        }
       }
     },
-    [level.id, recordWin],
+    [level.id, level.budget, recordWin],
   );
 
   const chooseTrain = (next: VehicleId) => {
@@ -137,7 +154,9 @@ export function App() {
     saveMuted(!muted);
   };
 
-  const hasNextLevel = levelIndex + 1 < LEVELS.length;
+  // Only offer the next level once it is open (an over-budget handcar earns no star).
+  const nextLevel = LEVELS[levelIndex + 1];
+  const hasNextLevel = nextLevel !== undefined && isUnlocked(nextLevel.id, stars);
   const heavier = result ? heavierTrain(result.train) : null;
 
   return (
@@ -157,6 +176,7 @@ export function App() {
         onShowHint={() => setMessage(levelToast(level))}
         onToggleMute={toggleMute}
       />
+      <Budget cost={cost} budget={level.budget} />
       {message && <Toast message={message} onDone={hideMessage} />}
       <Toolbar
         material={material}
@@ -181,6 +201,7 @@ export function App() {
           hasWater={level.waterY !== null}
           trainName={VEHICLES[result.train].name}
           stars={starsFor(level.id, stars)}
+          overBudget={result.overBudget}
           onTryAgain={() => play(result.train)}
           onEdit={() => setResult(null)}
           onHeavierTrain={heavier ? () => play(heavier) : null}

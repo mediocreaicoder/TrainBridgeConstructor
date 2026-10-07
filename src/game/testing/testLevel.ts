@@ -13,6 +13,7 @@ export const TEST_LEVEL: Level = {
   id: 1,
   name: 'Test Gap',
   hint: '',
+  budget: 10000,
   width: 320,
   height: 180,
   terrain: [

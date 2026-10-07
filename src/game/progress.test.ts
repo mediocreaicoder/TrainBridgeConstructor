@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUnlocked, startingLevelIndex, starsFor, withResult } from './progress';
+import { isUnlocked, startingLevelIndex, starsEarned, starsFor, withResult } from './progress';
 
 describe('isUnlocked', () => {
   it('always opens the first level', () => {
@@ -39,5 +39,17 @@ describe('startingLevelIndex', () => {
 
   it('starts at the last level when all have stars', () => {
     expect(startingLevelIndex(ids, new Map([[1, 1], [2, 4], [3, 2]]))).toBe(2);
+  });
+});
+
+describe('starsEarned', () => {
+  it('gives the train its stars within budget', () => {
+    expect(starsEarned(3, 900, 1000)).toBe(3);
+    expect(starsEarned(4, 1000, 1000)).toBe(4); // exactly on budget is fine
+  });
+
+  it('takes one star off over budget, down to zero for the handcar', () => {
+    expect(starsEarned(4, 1001, 1000)).toBe(3);
+    expect(starsEarned(1, 1500, 1000)).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addBeam,
+  bridgeCost,
   canMoveJoint,
   canPlaceBeam,
   createBridge,
@@ -162,5 +163,18 @@ describe('moveJoint / canMoveJoint', () => {
     expect(canMoveJoint(bridge, level.terrain, LEFT_TOP, { x: 110, y: 90 })).toBe(false);
     expect(canMoveJoint(bridge, level.terrain, 4, { x: 126, y: 130 })).toBe(false); // an anchor
     expect(canMoveJoint(bridge, level.terrain, 4, { x: 115, y: 110 })).toBe(false); // in the cliff
+  });
+});
+
+describe('bridgeCost', () => {
+  it('is free when nothing is built', () => {
+    expect(bridgeCost(createBridge(level.anchors))).toBe(0);
+  });
+
+  it('adds up length times price per material', () => {
+    // 20 units of track (2 per unit) and a 30.6-unit wood beam (1 per unit).
+    let bridge = addBeam(createBridge(level.anchors), LEFT_TOP, point(140, 100), 'track');
+    bridge = addBeam(bridge, LEFT_TOP, joint(LEFT_LOW), 'wood');
+    expect(bridgeCost(bridge)).toBe(Math.round(20 * 2 + Math.hypot(6, 30) * 1));
   });
 });

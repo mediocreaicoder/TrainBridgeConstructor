@@ -1,5 +1,6 @@
 import {
   addBeam,
+  bridgeCost,
   canPlaceBeam,
   createBridge,
   findBeamNear,
@@ -51,10 +52,16 @@ export type EngineMode = 'edit' | 'run';
 
 /** Events the engine reports to the UI. */
 export type EngineEvent =
-  | { type: 'historyChanged'; canUndo: boolean; canRedo: boolean }
+  | { type: 'historyChanged'; canUndo: boolean; canRedo: boolean; cost: number }
   | { type: 'zoomChanged'; canZoomIn: boolean; canZoomOut: boolean }
   | { type: 'modeChanged'; mode: EngineMode }
-  | { type: 'runFinished'; outcome: RunOutcome; train: VehicleId };
+  | {
+      type: 'runFinished';
+      outcome: RunOutcome;
+      train: VehicleId;
+      /** What the bridge that was tested costs. */
+      cost: number;
+    };
 
 export type EngineListener = (event: EngineEvent) => void;
 
@@ -390,7 +397,12 @@ export class Engine {
 
   private emitHistoryChanged(): void {
     const { history } = this;
-    this.emit({ type: 'historyChanged', canUndo: canUndo(history), canRedo: canRedo(history) });
+    this.emit({
+      type: 'historyChanged',
+      canUndo: canUndo(history),
+      canRedo: canRedo(history),
+      cost: bridgeCost(history.present),
+    });
   }
 
   private setMode(mode: EngineMode): void {
@@ -450,7 +462,8 @@ export class Engine {
     const { outcome } = run.train;
     if (outcome && this.secondsSinceOutcome === null) {
       this.secondsSinceOutcome = 0;
-      this.emit({ type: 'runFinished', outcome, train: this.runningTrain });
+      const cost = bridgeCost(this.history.present);
+      this.emit({ type: 'runFinished', outcome, train: this.runningTrain, cost });
     } else if (this.secondsSinceOutcome !== null) {
       this.secondsSinceOutcome += SIMULATION_STEP;
       if (this.secondsSinceOutcome >= AUTO_STOP_SECONDS) this.stop();

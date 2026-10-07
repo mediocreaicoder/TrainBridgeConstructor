@@ -364,3 +364,30 @@ body,
 .toolbar-train {
   min-width: 56px;
 }
+
+/* -------------------------------------------------------------------------
+   Budget: cost against the level's budget, top left. Red when over.
+   ------------------------------------------------------------------------- */
+
+.budget {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  padding: 8px 10px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: #fff;
+  background: rgba(28, 28, 28, 0.75);
+  border: 2px solid #1c1c1c;
+  pointer-events: none;
+}
+
+.budget-over {
+  color: #ff6a5c;
+}
+
+.result-note {
+  margin: -8px 0 14px;
+  font-size: 7px;
+  color: #ff6a5c;
+}

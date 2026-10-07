@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beamEnds, type Bridge } from './bridge';
+import { beamEnds, bridgeCost, type Bridge } from './bridge';
 import { isStrictlyInsidePolygon } from './geometry';
 import { LEVELS, type Level } from './level';
 import { MATERIALS, MIN_BEAM_LENGTH } from './materials';
@@ -18,6 +18,7 @@ type Recipe = (b: BridgeBuilder) => void;
  * - light: a cheap bridge that gets the handcar across (1 star).
  * - strong: a bridge that gets the goods train across (all 4 stars), so we
  *   know every star can be earned on every level.
+ * Both must stay within the level's budget (over budget costs a star).
  */
 interface LevelCase {
   name: string;
@@ -198,12 +199,14 @@ describe('levels', () => {
       it('can be won with the handcar on a light bridge (1 star)', () => {
         const bridge = build(level, testCase.light);
         expect(ruleViolations(level, bridge)).toEqual([]);
+        expect(bridgeCost(bridge)).toBeLessThanOrEqual(level.budget);
         expect(play(level, bridge, 'handcar')).toBe('arrived');
       });
 
       it('can be won with the goods train on a strong bridge (4 stars)', () => {
         const bridge = build(level, testCase.strong);
         expect(ruleViolations(level, bridge)).toEqual([]);
+        expect(bridgeCost(bridge)).toBeLessThanOrEqual(level.budget);
         expect(play(level, bridge, 'goods')).toBe('arrived');
       });
     });
