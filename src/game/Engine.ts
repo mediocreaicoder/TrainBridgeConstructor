@@ -43,7 +43,7 @@ import type { Level } from './level';
 import type { MaterialId } from './materials';
 import { renderFrame, type FrameState } from './render';
 import { createRun, stepRun } from './run';
-import { VEHICLES, type RunOutcome } from './train';
+import { VEHICLES, type RunOutcome, type TrainSpec, type VehicleId } from './train';
 import { distance, type Vec2 } from './types';
 
 /** Editing the bridge, or watching the vehicle try to cross it. */
@@ -54,7 +54,7 @@ export type EngineEvent =
   | { type: 'historyChanged'; canUndo: boolean; canRedo: boolean }
   | { type: 'zoomChanged'; canZoomIn: boolean; canZoomOut: boolean }
   | { type: 'modeChanged'; mode: EngineMode }
-  | { type: 'runFinished'; outcome: RunOutcome };
+  | { type: 'runFinished'; outcome: RunOutcome; train: VehicleId };
 
 export type EngineListener = (event: EngineEvent) => void;
 
@@ -181,6 +181,10 @@ export class Engine {
   private camera: Camera;
   private history: History;
   private material: MaterialId = 'track';
+  /** The train the next run will send across. */
+  private train: VehicleId = 'handcar';
+  /** The train of the current run (the selection may change before the next one). */
+  private runningTrain: VehicleId = 'handcar';
   /**
    * With Track selected, beams that don't continue the track get this
    * material: the support material chosen last, or the level's first one.
@@ -213,7 +217,7 @@ export class Engine {
     this.view = fitView(level);
     this.camera = computeCamera({ width: 1, height: 1 }, level, this.view);
     this.history = createHistory(createBridge(level.anchors));
-    this.supportMaterial = level.allowedMaterials.find((m) => m !== 'track') ?? 'track';
+    this.supportMaterial = 'wood';
     this.state = {
       time: 0,
       bridge: this.history.present,
@@ -286,6 +290,11 @@ export class Engine {
   // -------------------------------------------------------------------------
 
   /** Material used for the next beams. */
+  /** The train the next run sends across. */
+  setTrain(train: VehicleId): void {
+    this.train = train;
+  }
+
   setMaterial(material: MaterialId): void {
     this.material = material;
     if (material !== 'track') this.supportMaterial = material;
@@ -309,12 +318,15 @@ export class Engine {
   }
 
   /**
-   * Starts a run: the bridge becomes a physics simulation and the vehicle rolls
-   * in from the left. The bridge can't be edited meanwhile.
+   * Starts a run: the bridge becomes a physics simulation and the train (by
+   * default the selected one) rolls in from the left. The bridge can't be
+   * edited meanwhile.
    */
-  play(): void {
+  play(train: VehicleId = this.train): void {
     if (this.mode === 'run') return;
-    this.state.run = createRun(this.level, this.history.present);
+    this.train = train;
+    this.runningTrain = this.train;
+    this.state.run = createRun(this.level, this.history.present, this.trainSpec());
     this.unsimulatedSeconds = 0;
     this.secondsSinceOutcome = null;
     this.cancelBuildGesture();
@@ -353,7 +365,7 @@ export class Engine {
    * selected material. Returns whether the beam was built.
    */
   tryAddBeam(fromJointId: number, target: BeamTarget, material = this.material): boolean {
-    if (this.mode !== 'edit' || !this.level.allowedMaterials.includes(material)) return false;
+    if (this.mode !== 'edit') return false;
     const bridge = this.history.present;
     const placement = canPlaceBeam(bridge, this.level.terrain, fromJointId, target, material);
     if (!placement.ok) return false;
@@ -426,28 +438,41 @@ export class Engine {
     const run = this.state.run;
     if (this.mode !== 'run' || !run) return;
 
-    const before = summarizeRun(run);
-    stepRun(run, this.level, VEHICLES[this.level.vehicle], SIMULATION_STEP);
-    for (const cue of soundCues(before, summarizeRun(run), this.level)) this.handleCue(cue);
+    const spec = this.trainSpec();
+    const before = summarizeRun(run, spec);
+    const wasInWater = run.train.cars.map((car) => car.status === 'sunk');
+    stepRun(run, this.level, spec, SIMULATION_STEP);
+    for (const cue of soundCues(before, summarizeRun(run, spec), this.level)) this.handleCue(cue);
+    run.train.cars.forEach((car, i) => {
+      if (car.status === 'sunk' && !wasInWater[i]) this.splashAt(car.position.x);
+    });
 
-    const next = run.vehicle;
-    if (next.outcome && this.secondsSinceOutcome === null) {
+    const { outcome } = run.train;
+    if (outcome && this.secondsSinceOutcome === null) {
       this.secondsSinceOutcome = 0;
-      this.emit({ type: 'runFinished', outcome: next.outcome });
+      this.emit({ type: 'runFinished', outcome, train: this.runningTrain });
     } else if (this.secondsSinceOutcome !== null) {
       this.secondsSinceOutcome += SIMULATION_STEP;
       if (this.secondsSinceOutcome >= AUTO_STOP_SECONDS) this.stop();
     }
   }
 
-  /** Plays a cue's sound, and starts the visual effect that goes with it. */
+  /** Plays a cue's sound, and shakes the screen when a beam breaks. */
   private handleCue(cue: SoundId): void {
     this.audio.play(cue);
     if (cue === 'crack') this.state.shake = SHAKE_SECONDS;
-    if (cue === 'splash' && this.state.run && this.level.waterY !== null) {
-      const at = { x: this.state.run.vehicle.position.x, y: this.level.waterY };
-      this.state.droplets = [...this.state.droplets, ...spawnSplash(at, Math.round(at.x))];
-    }
+  }
+
+  /** Throws up water droplets where a car hit the water. */
+  private splashAt(x: number): void {
+    if (this.level.waterY === null) return;
+    const at = { x, y: this.level.waterY };
+    this.state.droplets = [...this.state.droplets, ...spawnSplash(at, Math.round(at.x))];
+  }
+
+  /** The train of the current run. */
+  private trainSpec(): TrainSpec {
+    return VEHICLES[this.runningTrain];
   }
 
   /** Effects run in screen time, so they finish even after the run has stopped. */

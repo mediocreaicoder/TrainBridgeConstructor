@@ -3,11 +3,14 @@ import { GRAVITY, particleAt, type PointLoad, type Simulation } from './physics'
 import type { Vec2 } from './types';
 
 /**
- * Vehicles that drive across the bridge. The vehicle rides on the simulated
- * track beams, and its weight pushes down on them (`wheelLoads`), which is
- * what makes the bridge sag and, if it is too weak, break.
+ * Trains that drive across the bridge: a chain of cars at a fixed spacing,
+ * all rolling at the train's speed. Each car rides on the simulated track
+ * beams on its own, and its weight pushes down on them (`wheelLoads`), which
+ * is what makes the bridge sag and, if it is too weak, break. A car whose
+ * middle has no track under it tips off and falls; the cars behind keep
+ * rolling and follow it over the edge.
  *
- * Everything here is pure: `stepVehicle` returns a new Vehicle.
+ * Everything here is pure: `stepTrain` returns a new Train.
  */
 
 /** A drivable piece of track: a bank rail, or a track beam in the simulation. */
@@ -18,44 +21,115 @@ export interface TrackSegment {
   particles: [number, number] | null;
 }
 
-export interface VehicleSpec {
+/** What a car looks like; `renderVehicle.ts` draws each kind. */
+export type CarKind = 'handcar' | 'shunter' | 'engine' | 'coach' | 'boxcar';
+
+export interface CarSpec {
+  kind: CarKind;
+  /** Body length, in world units. Sets the spacing between cars. */
+  length: number;
   /** Horizontal distance between the two axles, in world units. */
   wheelBase: number;
-  /** Rolling speed, in world units per second. */
-  speed: number;
   /** Mass in the same units as the beams (see materials.ts). */
   mass: number;
+  /** People on board scream when the car falls. */
+  hasPeople: boolean;
 }
 
-/** The first vehicle: a one-man handcar, small and slow. */
-export const HANDCAR: VehicleSpec = { wheelBase: 8, speed: 16, mass: 140 };
+export interface TrainSpec {
+  /** Shown to the player, e.g. "Here comes the passenger train!". */
+  name: string;
+  /** Short name for the toolbar button. */
+  label: string;
+  /** Stars earned on a level when this train makes it across: heavier trains earn more. */
+  stars: number;
+  /** Rolling speed, in world units per second. */
+  speed: number;
+  /** Front to back. */
+  cars: readonly CarSpec[];
+}
 
-/** Every vehicle a level can send across. More trains come in phase 6. */
-export type VehicleId = 'handcar';
-export const VEHICLES: Readonly<Record<VehicleId, VehicleSpec>> = { handcar: HANDCAR };
+const CARS = {
+  handcar: { kind: 'handcar', length: 13, wheelBase: 8, mass: 140, hasPeople: true },
+  shunter: { kind: 'shunter', length: 22, wheelBase: 14, mass: 280, hasPeople: true },
+  engine: { kind: 'engine', length: 26, wheelBase: 16, mass: 380, hasPeople: true },
+  coach: { kind: 'coach', length: 26, wheelBase: 18, mass: 220, hasPeople: true },
+  boxcar: { kind: 'boxcar', length: 22, wheelBase: 14, mass: 300, hasPeople: false },
+} as const satisfies Record<CarKind, CarSpec>;
 
-export type VehicleStatus = 'rolling' | 'falling' | 'sunk';
+/** Every train that can be sent across a bridge, from light to heavy. */
+export type VehicleId = 'handcar' | 'maintenance' | 'passenger' | 'goods';
+
+export const VEHICLES: Readonly<Record<VehicleId, TrainSpec>> = {
+  handcar: { name: 'handcar', label: 'Handcar', stars: 1, speed: 16, cars: [CARS.handcar] },
+  maintenance: {
+    name: 'maintenance locomotive',
+    label: 'Shunter',
+    stars: 2,
+    speed: 20,
+    cars: [CARS.shunter],
+  },
+  passenger: {
+    name: 'passenger train',
+    label: 'Express',
+    stars: 3,
+    speed: 24,
+    cars: [CARS.engine, CARS.coach, CARS.coach, CARS.coach],
+  },
+  goods: {
+    name: 'goods train',
+    label: 'Freight',
+    stars: 4,
+    speed: 18,
+    cars: [CARS.engine, ...Array<CarSpec>(6).fill(CARS.boxcar)],
+  },
+};
+
+/** All trains from light to heavy: the order of the train button and of the stars. */
+export const TRAIN_ORDER: readonly VehicleId[] = ['handcar', 'maintenance', 'passenger', 'goods'];
+
+/** The most stars a level can give: for getting the heaviest train across. */
+export const MAX_STARS = 4;
+
+/** The next heavier train, or null for the heaviest. */
+export function heavierTrain(id: VehicleId): VehicleId | null {
+  return TRAIN_ORDER[TRAIN_ORDER.indexOf(id) + 1] ?? null;
+}
+
+/** Kept for tests and older callers: the one-car handcar train. */
+export const HANDCAR = VEHICLES.handcar;
+
+export type CarStatus = 'rolling' | 'falling' | 'sunk';
 export type RunOutcome = 'arrived' | 'lost';
 
-export interface Vehicle {
-  /** The point midway between the axles, on top of the track (the joint line). */
+export interface Car {
+  kind: CarKind;
+  /** The point midway between the axles, on the joint line of the track. */
   position: Vec2;
   /** Tilt in radians. Positive is nose down (y points down, so clockwise). */
   angle: number;
-  /** Distance rolled. Drives the wheel and pump animation. */
+  /** Distance rolled. Drives the wheel animation. */
   distance: number;
   /** Used while falling. */
   velocity: Vec2;
   spin: number;
-  status: VehicleStatus;
+  status: CarStatus;
+}
+
+export interface Train {
+  /** Front to back, matching the spec's cars. */
+  cars: Car[];
   /** Set once, when the run is decided. */
   outcome: RunOutcome | null;
 }
 
-/** How far the vehicle starts before the bridge, so it is seen rolling up to it. */
+/** How far the front car starts before the bridge, so it is seen rolling up to it. */
 const START_DISTANCE = 48;
 
-/** The run is won when the vehicle gets this far past the end of the bridge. */
+/** Gap between the bodies of coupled cars. */
+const COUPLING_GAP = 2;
+
+/** The run is won when the last car gets this far past the end of the bridge. */
 const ARRIVE_MARGIN = 24;
 
 /**
@@ -67,7 +141,7 @@ const STEP_TOLERANCE = 2.5;
 /** Rails on the banks reach this far beyond the bridge ends. */
 const RAIL_EXTENT = 1000;
 
-/** How fast a falling vehicle tips forward, in radians per second. */
+/** How fast a falling car tips forward, in radians per second. */
 const FALL_SPIN = 3;
 
 /**
@@ -93,52 +167,67 @@ export function buildTrack(level: Level, sim: Simulation): TrackSegment[] {
   return [...rails, ...beams];
 }
 
-/** A new vehicle standing on the left bank, ready to roll. */
-export function createVehicle(level: Level): Vehicle {
-  return {
-    position: { x: level.bridgeStart.x - START_DISTANCE, y: level.bridgeStart.y },
-    angle: 0,
-    distance: 0,
-    velocity: { x: 0, y: 0 },
-    spin: 0,
-    status: 'rolling',
-    outcome: null,
-  };
+/** A new train on the left bank, ready to roll: the cars coupled one behind the other. */
+export function createTrain(level: Level, spec: TrainSpec): Train {
+  let x = level.bridgeStart.x - START_DISTANCE;
+  const cars = spec.cars.map((carSpec, i) => {
+    const previous = spec.cars[i - 1];
+    if (previous) x -= previous.length / 2 + COUPLING_GAP + carSpec.length / 2;
+    return {
+      kind: carSpec.kind,
+      position: { x, y: level.bridgeStart.y },
+      angle: 0,
+      distance: 0,
+      velocity: { x: 0, y: 0 },
+      spin: 0,
+      status: 'rolling' as const,
+    };
+  });
+  return { cars, outcome: null };
 }
 
-/** Advances the vehicle by `dt` seconds. */
-export function stepVehicle(
-  vehicle: Vehicle,
-  spec: VehicleSpec,
+/** Advances the train by `dt` seconds, and decides the run once it can be decided. */
+export function stepTrain(
+  train: Train,
+  spec: TrainSpec,
   track: readonly TrackSegment[],
   level: Level,
   dt: number,
-): Vehicle {
-  switch (vehicle.status) {
-    case 'rolling':
-      return roll(vehicle, spec, track, level, dt);
-    case 'falling':
-      return fall(vehicle, level, dt);
-    case 'sunk':
-      return vehicle;
-  }
+): Train {
+  const cars = train.cars.map((car, i) =>
+    stepCar(car, carSpecAt(spec, i), spec.speed, track, level, dt),
+  );
+  return { cars, outcome: train.outcome ?? decideOutcome(cars, level) };
+}
+
+/** Lost as soon as a car is in the water (or off the screen); won when all are safely across. */
+function decideOutcome(cars: readonly Car[], level: Level): RunOutcome | null {
+  if (cars.some((car) => car.status === 'sunk')) return 'lost';
+  const last = cars.at(-1);
+  const allRolling = cars.every((car) => car.status === 'rolling');
+  if (allRolling && last && last.position.x >= level.bridgeEnd.x + ARRIVE_MARGIN) return 'arrived';
+  return null;
 }
 
 /**
- * The forces the rolling vehicle puts on the bridge. Its weight is shared by
- * the wheels that stand on track. A wheel on a track beam pushes on the beam's
- * two end particles, split by where along the beam it stands (the lever
- * principle: standing a quarter of the way along puts 3/4 on the near end).
+ * The forces the rolling cars put on the bridge. Each car's weight is shared
+ * by its wheels that stand on track. A wheel on a track beam pushes on the
+ * beam's two end particles, split by where along the beam it stands (the
+ * lever principle: a quarter of the way along puts 3/4 on the near end).
  * Wheels on the bank rails push on solid ground, so they add no load.
  */
 export function wheelLoads(
-  vehicle: Vehicle,
-  spec: VehicleSpec,
+  train: Train,
+  spec: TrainSpec,
   track: readonly TrackSegment[],
 ): PointLoad[] {
-  if (vehicle.status !== 'rolling') return [];
+  return train.cars.flatMap((car, i) => carLoads(car, carSpecAt(spec, i), track));
+}
 
-  const contacts = wheelPositions(vehicle, spec)
+function carLoads(car: Car, spec: CarSpec, track: readonly TrackSegment[]): PointLoad[] {
+  if (car.status !== 'rolling') return [];
+
+  const contacts = wheelPositions(car, spec)
     .map((wheel) => findTrackUnder(track, wheel.x, wheel.y))
     .filter((contact) => contact !== null);
   if (contacts.length === 0) return [];
@@ -165,6 +254,12 @@ export function trackHeightAt(
   nearY: number,
 ): number | null {
   return findTrackUnder(track, x, nearY)?.y ?? null;
+}
+
+export function carSpecAt(spec: TrainSpec, index: number): CarSpec {
+  const car = spec.cars[index];
+  if (!car) throw new Error(`Train ${spec.name} has no car ${index}`);
+  return car;
 }
 
 interface TrackContact {
@@ -197,15 +292,33 @@ function findTrackUnder(
   return best;
 }
 
-/** Where the two wheels touch the track, from the vehicle's position and tilt. */
-function wheelPositions(vehicle: Vehicle, spec: VehicleSpec): [Vec2, Vec2] {
+/** Where a car's two wheels touch the track, from its position and tilt. */
+function wheelPositions(car: Car, spec: CarSpec): [Vec2, Vec2] {
   const half = spec.wheelBase / 2;
-  const tilt = Math.sin(vehicle.angle) * half;
-  const { x, y } = vehicle.position;
+  const tilt = Math.sin(car.angle) * half;
+  const { x, y } = car.position;
   return [
     { x: x + half, y: y + tilt },
     { x: x - half, y: y - tilt },
   ];
+}
+
+function stepCar(
+  car: Car,
+  spec: CarSpec,
+  speed: number,
+  track: readonly TrackSegment[],
+  level: Level,
+  dt: number,
+): Car {
+  switch (car.status) {
+    case 'rolling':
+      return roll(car, spec, speed, track, dt);
+    case 'falling':
+      return fall(car, level, dt);
+    case 'sunk':
+      return car;
+  }
 }
 
 /**
@@ -214,62 +327,47 @@ function wheelPositions(vehicle: Vehicle, spec: VehicleSpec): [Vec2, Vec2] {
  * wheel over a gap just hangs, keeping the car's current tilt.
  */
 function roll(
-  vehicle: Vehicle,
-  spec: VehicleSpec,
+  car: Car,
+  spec: CarSpec,
+  speed: number,
   track: readonly TrackSegment[],
-  level: Level,
   dt: number,
-): Vehicle {
-  const x = vehicle.position.x + spec.speed * dt;
-  const centreY = trackHeightAt(track, x, vehicle.position.y);
-  if (centreY === null) return startFalling(vehicle, spec);
+): Car {
+  const x = car.position.x + speed * dt;
+  const centreY = trackHeightAt(track, x, car.position.y);
+  if (centreY === null) return startFalling(car, speed);
 
   // Look for each wheel's track near where that wheel was last step.
-  const moved = { ...vehicle, position: { x, y: vehicle.position.y } };
+  const moved = { ...car, position: { x, y: car.position.y } };
   const [front, rear] = wheelPositions(moved, spec);
   const frontY = trackHeightAt(track, front.x, front.y);
   const rearY = trackHeightAt(track, rear.x, rear.y);
   const angle =
-    frontY !== null && rearY !== null ? Math.atan2(frontY - rearY, spec.wheelBase) : vehicle.angle;
+    frontY !== null && rearY !== null ? Math.atan2(frontY - rearY, spec.wheelBase) : car.angle;
 
-  const arrived = vehicle.outcome === null && x >= level.bridgeEnd.x + ARRIVE_MARGIN;
-  return {
-    ...vehicle,
-    position: { x, y: centreY },
-    angle,
-    distance: vehicle.distance + spec.speed * dt,
-    outcome: arrived ? 'arrived' : vehicle.outcome,
-  };
+  return { ...car, position: { x, y: centreY }, angle, distance: car.distance + speed * dt };
 }
 
 /** Leaves the track with its current speed and direction, and starts to tip forward. */
-function startFalling(vehicle: Vehicle, spec: VehicleSpec): Vehicle {
+function startFalling(car: Car, speed: number): Car {
   return {
-    ...vehicle,
+    ...car,
     status: 'falling',
-    velocity: {
-      x: spec.speed * Math.cos(vehicle.angle),
-      y: spec.speed * Math.sin(vehicle.angle),
-    },
+    velocity: { x: speed * Math.cos(car.angle), y: speed * Math.sin(car.angle) },
     spin: FALL_SPIN,
   };
 }
 
-/** Simple ballistics. The run is lost when the vehicle reaches the water or leaves the screen. */
-function fall(vehicle: Vehicle, level: Level, dt: number): Vehicle {
-  const velocity = { x: vehicle.velocity.x, y: vehicle.velocity.y + GRAVITY * dt };
-  const position = {
-    x: vehicle.position.x + velocity.x * dt,
-    y: vehicle.position.y + velocity.y * dt,
-  };
+/** Simple ballistics, until the car reaches the water or falls off the screen. */
+function fall(car: Car, level: Level, dt: number): Car {
+  const velocity = { x: car.velocity.x, y: car.velocity.y + GRAVITY * dt };
+  const position = { x: car.position.x + velocity.x * dt, y: car.position.y + velocity.y * dt };
   const bottom = level.waterY ?? level.height + 40;
-  const lost = position.y >= bottom;
   return {
-    ...vehicle,
+    ...car,
     position,
     velocity,
-    angle: vehicle.angle + vehicle.spin * dt,
-    status: lost ? 'sunk' : 'falling',
-    outcome: lost ? (vehicle.outcome ?? 'lost') : vehicle.outcome,
+    angle: car.angle + car.spin * dt,
+    status: position.y >= bottom ? 'sunk' : 'falling',
   };
 }

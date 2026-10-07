@@ -41,6 +41,4 @@ export const TEST_LEVEL: Level = {
   ],
   bridgeStart: { x: 120, y: 100 },
   bridgeEnd: { x: 200, y: 100 },
-  allowedMaterials: ['track', 'wood', 'steel', 'cable'],
-  vehicle: 'handcar',
 };

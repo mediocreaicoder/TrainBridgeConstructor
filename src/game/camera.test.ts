@@ -22,8 +22,6 @@ const level: Level = {
   anchors: [],
   bridgeStart: { x: 0, y: 0 },
   bridgeEnd: { x: 320, y: 0 },
-  allowedMaterials: ['track'],
-  vehicle: 'handcar',
 };
 
 describe('fitCamera', () => {

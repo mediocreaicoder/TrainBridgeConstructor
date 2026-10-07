@@ -1,53 +1,55 @@
-import { MATERIALS, type MaterialId } from '../game/materials';
+import { MATERIAL_IDS, MATERIALS, type MaterialId } from '../game/materials';
+import { VEHICLES, type VehicleId } from '../game/train';
+import { Stars } from './Stars';
 
 interface ToolbarProps {
-  /** The materials this level allows, in toolbar order. */
-  materials: readonly MaterialId[];
   material: MaterialId;
-  /** True while the vehicle is running: editing is locked and Play becomes Stop. */
+  /** The train the next run sends across. */
+  train: VehicleId;
+  /** True while a train is running: editing is locked and Play becomes Stop. */
   running: boolean;
   canUndo: boolean;
   canRedo: boolean;
   canZoomIn: boolean;
   canZoomOut: boolean;
-  muted: boolean;
   onMaterialChange: (material: MaterialId) => void;
+  /** Switches to the next train (and from the heaviest back to the handcar). */
+  onNextTrain: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onPlay: () => void;
   onStop: () => void;
-  onToggleMute: () => void;
 }
 
 /**
- * Material picker plus undo, redo, zoom, sound and play/stop. Two groups, so
+ * Material picker plus undo, redo, zoom, train and play/stop. Two groups, so
  * CSS can stack them along the bottom (portrait) or put them in columns on
  * each side (landscape).
  */
 export function Toolbar({
-  materials,
   material,
+  train,
   running,
   canUndo,
   canRedo,
   canZoomIn,
   canZoomOut,
-  muted,
   onMaterialChange,
+  onNextTrain,
   onUndo,
   onRedo,
   onZoomIn,
   onZoomOut,
   onPlay,
   onStop,
-  onToggleMute,
 }: ToolbarProps) {
+  const trainSpec = VEHICLES[train];
   return (
     <div className="toolbar">
       <div className="toolbar-group" role="radiogroup" aria-label="Material">
-        {materials.map((id) => (
+        {MATERIAL_IDS.map((id) => (
           <button
             key={id}
             type="button"
@@ -99,11 +101,13 @@ export function Toolbar({
         </button>
         <button
           type="button"
-          className="toolbar-button"
-          aria-pressed={!muted}
-          onClick={onToggleMute}
+          className="toolbar-button toolbar-train"
+          aria-label={`Train: ${trainSpec.name}. Tap to change`}
+          disabled={running}
+          onClick={onNextTrain}
         >
-          {muted ? 'Muted' : 'Sound'}
+          {trainSpec.label}
+          <Stars count={trainSpec.stars} />
         </button>
         <button
           type="button"

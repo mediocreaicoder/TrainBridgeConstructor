@@ -5,46 +5,67 @@ import { LEVELS, type Level } from './level';
 import { MATERIALS, MIN_BEAM_LENGTH } from './materials';
 import { createRun, stepRun } from './run';
 import { BridgeBuilder } from './testing/bridgeBuilder';
-import { VEHICLES, type RunOutcome } from './train';
+import { VEHICLES, type RunOutcome, type VehicleId } from './train';
 import { distance } from './types';
 
 const STEP = 1 / 120;
 const along = (xs: number[], y: number) => xs.map((x) => ({ x, y }));
+type Recipe = (b: BridgeBuilder) => void;
 
 /**
- * For every level: a bridge that should win (the reference solution, so we
- * know the level can be beaten) and a naive one that should lose (so we know
- * the level asks for what its hint says).
+ * For every level, three bridges:
+ * - naive: just a deck of track on the given points. Must lose, even with the handcar.
+ * - light: a cheap bridge that gets the handcar across (1 star).
+ * - strong: a bridge that gets the goods train across (all 4 stars), so we
+ *   know every star can be earned on every level.
  */
 interface LevelCase {
   name: string;
-  solution: (b: BridgeBuilder) => void;
-  naive: (b: BridgeBuilder) => void;
+  deck: number[];
+  light: Recipe;
+  strong: Recipe;
 }
+
+/** A track deck on `xs` at y = 75 with a truss under it, and optionally one over it. */
+function truss(xs: number[], material: 'wood' | 'steel', withArch = false): Recipe {
+  return (b) => {
+    const deck = along(xs, 75);
+    b.chain(deck, 'track').truss(deck, 15, material);
+    if (withArch) b.truss(deck, -15, material);
+  };
+}
+
+const D120 = [100, 130, 160, 190, 220];
+const D150 = [85, 115, 145, 175, 205, 235];
+const D180 = [70, 100, 130, 160, 190, 220, 250];
+const STEPPING_STONES = [70, 100, 125, 145, 175, 195, 220, 250];
 
 const CASES: LevelCase[] = [
   {
     name: 'First Crossing',
-    solution: (b) => {
-      const deck = along([100, 130, 160, 190, 220], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'wood');
-    },
-    naive: (b) => b.chain(along([100, 130, 160, 190, 220], 75), 'track'),
+    deck: D120,
+    light: truss(D120, 'wood'),
+    strong: truss(D120, 'steel'),
   },
   {
     name: 'Stepping Stone',
-    solution: (b) => {
-      b.chain(along([70, 100, 125, 145, 175, 195, 220, 250], 75), 'track');
+    deck: STEPPING_STONES,
+    light: (b) => {
+      b.chain(along(STEPPING_STONES, 75), 'track');
       b.truss(along([70, 100, 125, 145], 75), 15, 'wood');
       b.truss(along([175, 195, 220, 250], 75), 15, 'wood');
     },
-    naive: (b) => b.chain(along([70, 100, 125, 145, 175, 195, 220, 250], 75), 'track'),
+    strong: (b) => {
+      b.chain(along(STEPPING_STONES, 75), 'track');
+      b.truss(along([70, 100, 125, 145], 75), 15, 'steel');
+      b.truss(along([175, 195, 220, 250], 75), 15, 'steel');
+    },
   },
   {
     name: 'Wide Gap',
-    solution: (b) => {
-      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'wood');
+    deck: D180,
+    light: (b) => {
+      truss(D180, 'wood')(b);
       // A braced prop from each low anchor up to the first two truss apexes.
       for (const [anchor, prop, near, far] of [
         [{ x: 80, y: 115 }, { x: 110, y: 115 }, { x: 85, y: 90 }, { x: 115, y: 90 }],
@@ -54,16 +75,13 @@ const CASES: LevelCase[] = [
         b.beam(prop, near, 'wood').beam(prop, far, 'wood');
       }
     },
-    naive: (b) => {
-      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'wood');
-    },
+    strong: truss(D180, 'steel', true),
   },
   {
     name: 'From Below',
-    solution: (b) => {
-      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'wood');
+    deck: D180,
+    light: (b) => {
+      truss(D180, 'wood')(b);
       // A column from each deep anchor up into the truss.
       for (const [anchor, top, left, right] of [
         [{ x: 100, y: 135 }, { x: 100, y: 105 }, { x: 85, y: 90 }, { x: 115, y: 90 }],
@@ -72,36 +90,54 @@ const CASES: LevelCase[] = [
         b.beam(anchor, top, 'wood').beam(top, left, 'wood').beam(top, right, 'wood');
       }
     },
-    naive: (b) => {
-      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'wood');
-    },
+    strong: truss(D180, 'steel', true),
   },
   {
     name: 'Hanging Bridge',
-    solution: (b) => {
-      b.chain(along([85, 115, 145, 175, 205, 235], 75), 'track');
+    deck: D150,
+    light: (b) => {
+      b.chain(along(D150, 75), 'track');
       b.beam({ x: 80, y: 30 }, { x: 115, y: 75 }, 'cable');
       b.beam({ x: 80, y: 30 }, { x: 145, y: 75 }, 'cable');
       b.beam({ x: 240, y: 30 }, { x: 175, y: 75 }, 'cable');
       b.beam({ x: 240, y: 30 }, { x: 205, y: 75 }, 'cable');
     },
-    naive: (b) => b.chain(along([85, 115, 145, 175, 205, 235], 75), 'track'),
+    strong: truss(D150, 'steel', true),
   },
   {
     name: 'Long Haul',
-    solution: (b) => {
-      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'steel');
+    deck: D180,
+    light: truss(D180, 'steel'),
+    strong: truss(D180, 'steel', true),
+  },
+  {
+    name: 'Bare Cliffs',
+    deck: D120,
+    light: truss(D120, 'wood'),
+    strong: truss(D120, 'steel'),
+  },
+  {
+    name: 'Ledges',
+    deck: D150,
+    light: truss(D150, 'steel'),
+    strong: (b) => {
+      truss(D150, 'steel')(b);
+      // Steel props from the cliff anchors up to the first two apexes on each side.
+      b.beam({ x: 95, y: 120 }, { x: 100, y: 90 }, 'steel');
+      b.beam({ x: 95, y: 120 }, { x: 130, y: 90 }, 'steel');
+      b.beam({ x: 225, y: 120 }, { x: 220, y: 90 }, 'steel');
+      b.beam({ x: 225, y: 120 }, { x: 190, y: 90 }, 'steel');
     },
-    naive: (b) => {
-      const deck = along([70, 100, 130, 160, 190, 220, 250], 75);
-      b.chain(deck, 'track').truss(deck, 15, 'wood');
-    },
+  },
+  {
+    name: 'Grand Span',
+    deck: D180,
+    light: truss(D180, 'steel'),
+    strong: truss(D180, 'steel', true),
   },
 ];
 
-function build(level: Level, recipe: (b: BridgeBuilder) => void): Bridge {
+function build(level: Level, recipe: Recipe): Bridge {
   const builder = new BridgeBuilder(level);
   recipe(builder);
   return builder.bridge;
@@ -114,7 +150,6 @@ function ruleViolations(level: Level, bridge: Bridge): string[] {
     const [a, b] = beamEnds(bridge, beam);
     const length = distance(a, b);
     const where = `${beam.material} (${a.x},${a.y})-(${b.x},${b.y})`;
-    if (!level.allowedMaterials.includes(beam.material)) problems.push(`not allowed: ${where}`);
     if (length > MATERIALS[beam.material].maxLength + 1e-6) problems.push(`too long: ${where}`);
     if (length < MIN_BEAM_LENGTH - 1e-6) problems.push(`too short: ${where}`);
   }
@@ -126,12 +161,13 @@ function ruleViolations(level: Level, bridge: Bridge): string[] {
   return problems;
 }
 
-function play(level: Level, bridge: Bridge): RunOutcome | null {
-  const run = createRun(level, bridge);
-  for (let t = 0; t < 30 && run.vehicle.outcome === null; t += STEP) {
-    stepRun(run, level, VEHICLES[level.vehicle], STEP);
+function play(level: Level, bridge: Bridge, train: VehicleId): RunOutcome | null {
+  const spec = VEHICLES[train];
+  const run = createRun(level, bridge, spec);
+  for (let t = 0; t < 40 && run.train.outcome === null; t += STEP) {
+    stepRun(run, level, spec, STEP);
   }
-  return run.vehicle.outcome;
+  return run.train.outcome;
 }
 
 describe('levels', () => {
@@ -139,11 +175,8 @@ describe('levels', () => {
     expect(CASES.map((c) => c.name)).toEqual(LEVELS.map((l) => l.name));
   });
 
-  it('numbers the levels 1, 2, 3, ... and only uses known materials', () => {
-    LEVELS.forEach((level, index) => {
-      expect(level.id).toBe(index + 1);
-      expect(level.allowedMaterials).toContain('track');
-    });
+  it('numbers the levels 1, 2, 3, ...', () => {
+    LEVELS.forEach((level, index) => expect(level.id).toBe(index + 1));
   });
 
   it('includes the bridge ends among the anchors, so the track can connect', () => {
@@ -157,14 +190,21 @@ describe('levels', () => {
     const testCase = CASES[index]!;
 
     describe(`${level.id}. ${level.name}`, () => {
-      it('can be won with the reference solution, built within the rules', () => {
-        const bridge = build(level, testCase.solution);
-        expect(ruleViolations(level, bridge)).toEqual([]);
-        expect(play(level, bridge)).toBe('arrived');
+      it('is lost with just a deck of track, even with the handcar', () => {
+        const deck = (b: BridgeBuilder) => b.chain(along(testCase.deck, 75), 'track');
+        expect(play(level, build(level, deck), 'handcar')).toBe('lost');
       });
 
-      it('is lost with a naive bridge', () => {
-        expect(play(level, build(level, testCase.naive))).toBe('lost');
+      it('can be won with the handcar on a light bridge (1 star)', () => {
+        const bridge = build(level, testCase.light);
+        expect(ruleViolations(level, bridge)).toEqual([]);
+        expect(play(level, bridge, 'handcar')).toBe('arrived');
+      });
+
+      it('can be won with the goods train on a strong bridge (4 stars)', () => {
+        const bridge = build(level, testCase.strong);
+        expect(ruleViolations(level, bridge)).toEqual([]);
+        expect(play(level, bridge, 'goods')).toBe('arrived');
       });
     });
   });

@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import { Engine, type EngineEvent } from '../game/Engine';
 import type { Level } from '../game/level';
 import type { MaterialId } from '../game/materials';
+import type { VehicleId } from '../game/train';
 
 /** Commands the rest of the UI can send to the engine through a ref. */
 export interface GameControls {
@@ -9,13 +10,16 @@ export interface GameControls {
   redo(): void;
   zoomIn(): void;
   zoomOut(): void;
-  play(): void;
+  /** Starts a run, with the given train (default: the selected one). */
+  play(train?: VehicleId): void;
   stop(): void;
 }
 
 interface GameCanvasProps {
   level: Level;
   material: MaterialId;
+  /** The train the next run sends across. */
+  train: VehicleId;
   muted: boolean;
   onEvent: (event: EngineEvent) => void;
   ref?: Ref<GameControls>;
@@ -25,7 +29,7 @@ interface GameCanvasProps {
  * The only bridge between React and the game engine.
  * React mounts the canvas; the engine owns everything that happens on it.
  */
-export function GameCanvas({ level, material, muted, onEvent, ref }: GameCanvasProps) {
+export function GameCanvas({ level, material, train, muted, onEvent, ref }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
 
@@ -34,10 +38,12 @@ export function GameCanvas({ level, material, muted, onEvent, ref }: GameCanvasP
   const onEventRef = useRef(onEvent);
   const materialRef = useRef(material);
   const mutedRef = useRef(muted);
+  const trainRef = useRef(train);
   useEffect(() => {
     onEventRef.current = onEvent;
     materialRef.current = material;
     mutedRef.current = muted;
+    trainRef.current = train;
   });
 
   useEffect(() => {
@@ -47,6 +53,7 @@ export function GameCanvas({ level, material, muted, onEvent, ref }: GameCanvasP
     const engine = new Engine(canvas, level);
     engine.setMaterial(materialRef.current);
     engine.setMuted(mutedRef.current);
+    engine.setTrain(trainRef.current);
     const unsubscribe = engine.onEvent((event) => onEventRef.current(event));
     engine.start();
     engineRef.current = engine;
@@ -66,6 +73,10 @@ export function GameCanvas({ level, material, muted, onEvent, ref }: GameCanvasP
     engineRef.current?.setMuted(muted);
   }, [muted]);
 
+  useEffect(() => {
+    engineRef.current?.setTrain(train);
+  }, [train]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -73,7 +84,7 @@ export function GameCanvas({ level, material, muted, onEvent, ref }: GameCanvasP
       redo: () => engineRef.current?.redo(),
       zoomIn: () => engineRef.current?.zoomIn(),
       zoomOut: () => engineRef.current?.zoomOut(),
-      play: () => engineRef.current?.play(),
+      play: (train) => engineRef.current?.play(train),
       stop: () => engineRef.current?.stop(),
     }),
     [],

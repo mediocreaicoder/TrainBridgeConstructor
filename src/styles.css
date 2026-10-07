@@ -324,3 +324,43 @@ body,
     width: max-content;
   }
 }
+
+/* -------------------------------------------------------------------------
+   Stars: small pixel squares, filled yellow when earned.
+   ------------------------------------------------------------------------- */
+
+.stars {
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.star {
+  width: 5px;
+  height: 5px;
+  background: #1a2438;
+  border: 1px solid #1c1c1c;
+}
+
+.star-on {
+  background: #ffd84a;
+}
+
+.result-stars {
+  margin: -6px 0 14px;
+}
+
+.result-stars .star {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
+}
+
+.result-actions {
+  flex-wrap: wrap;
+}
+
+/* The train button: its name, and the stars that train earns. */
+.toolbar-train {
+  min-width: 56px;
+}

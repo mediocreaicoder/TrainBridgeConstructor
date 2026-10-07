@@ -8,7 +8,9 @@ const dryLevel: Level = { ...level, waterY: null };
 
 const rolling: RunSummary = {
   brokenBeams: 0,
-  status: 'rolling',
+  fallenWithPeople: 0,
+  sunk: 0,
+  frontRolling: true,
   arrived: false,
   distance: 3,
   maxLoad: 0.2,
@@ -31,19 +33,32 @@ describe('soundCues', () => {
   });
 
   it('screams when the handcar leaves the track, and splashes when it hits the water', () => {
-    const falling: RunSummary = { ...rolling, status: 'falling' };
+    const falling: RunSummary = { ...rolling, fallenWithPeople: 1, frontRolling: false };
     expect(soundCues(rolling, falling, level)).toEqual(['scream']);
-    expect(soundCues(falling, { ...falling, status: 'sunk' }, level)).toEqual(['splash']);
+    expect(soundCues(falling, { ...falling, sunk: 1 }, level)).toEqual(['splash']);
   });
 
   it('does not splash on a level without water', () => {
-    const falling: RunSummary = { ...rolling, status: 'falling' };
-    expect(soundCues(falling, { ...falling, status: 'sunk' }, dryLevel)).toEqual([]);
+    const falling: RunSummary = { ...rolling, fallenWithPeople: 1, frontRolling: false };
+    expect(soundCues(falling, { ...falling, sunk: 1 }, dryLevel)).toEqual([]);
   });
 
   it('plays the arrival jingle once', () => {
     const arrived: RunSummary = { ...rolling, arrived: true };
     expect(soundCues(rolling, arrived, level)).toEqual(['arrive']);
     expect(soundCues(arrived, arrived, level)).toEqual([]);
+  });
+});
+
+describe('soundCues with several cars', () => {
+  it('screams again for each car with people that goes over, and splashes for each car', () => {
+    const oneDown: RunSummary = { ...rolling, fallenWithPeople: 1, sunk: 1, frontRolling: false };
+    const twoDown: RunSummary = { ...oneDown, fallenWithPeople: 2, sunk: 2 };
+    expect(soundCues(oneDown, twoDown, level)).toEqual(['scream', 'splash']);
+  });
+
+  it('stops clacking once the front car has left the track', () => {
+    const before: RunSummary = { ...rolling, frontRolling: false, distance: 9.9 };
+    expect(soundCues(before, { ...before, distance: 10.1 }, level)).toEqual([]);
   });
 });

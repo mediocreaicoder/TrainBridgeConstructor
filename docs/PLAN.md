@@ -70,7 +70,7 @@ What works:
 - HUD text replaced by toasts (2026-10-04): the level name and hint fade out after 5 s, "?"
   shows them again. Manifest and icons added for "Add to Home Screen" (no address bar).
 
-What doesn't exist yet: more trains, terrain collisions, recorded sounds, saved bridges.
+What doesn't exist yet: terrain collisions, recorded sounds, saved bridges.
 
 ### Files
 
@@ -423,14 +423,21 @@ Decisions:
 
 ### The levels
 
-| # | Name | Idea | Materials | Reference solution |
+Every level can be played with every train, with all four materials (decided 2026-10-07).
+`levels.test.ts` proves for each level that a bare track deck loses even with the handcar, a
+light bridge carries the handcar (1 star) and a strong one carries the goods train (4 stars).
+
+| # | Name | Idea | Light bridge (1 star) | Strong bridge (4 stars) |
 | --- | --- | --- | --- | --- |
-| 1 | First Crossing | Short gap (120) | track, wood | Warren truss under the deck |
-| 2 | Stepping Stone | Two short gaps with a rock island | track, wood | A small truss in each gap |
-| 3 | Wide Gap | 180 wide, anchors on the cliff faces | track, wood | Truss + braced props from the low anchors |
-| 4 | From Below | 180 wide, only deep anchors (60 below), dry ravine | track, wood | Truss + a column from each deep anchor |
-| 5 | Hanging Bridge | No cliff anchors, anchors on pillars above the deck | track, cable | Deck hung from both pillars with cables |
-| 6 | Long Haul | 180 wide, no extra anchors | track, wood, steel | Steel truss (a wooden one breaks) |
+| 1 | First Crossing | 120 wide, low anchors | Wooden truss | Steel truss |
+| 2 | Stepping Stone | Two gaps with a rock island | Wooden truss in each gap | Steel truss in each gap |
+| 3 | Wide Gap | 180 wide, anchors on the cliff faces | Wooden truss + braced props | Steel truss under and over the deck |
+| 4 | From Below | 180 wide, only deep anchors, dry | Wooden truss + columns | Steel truss under and over |
+| 5 | Hanging Bridge | Anchors on pillars above the deck | Cables from the pillars | Steel truss under and over |
+| 6 | Long Haul | 180 wide, no extra anchors | Steel truss | Steel truss under and over |
+| 7 | Bare Cliffs | 120 wide, no extra anchors | Wooden truss | Steel truss |
+| 8 | Ledges | 150 wide, anchors on the cliffs | Steel truss | Steel truss + steel props |
+| 9 | Grand Span | 180 wide | Steel truss | Steel truss under and over |
 
 Ideas for later: a small level editor in dev mode (`?editor`) that exports level JSON; saving
 the player's bridge per level.
@@ -439,15 +446,34 @@ the player's bridge per level.
 
 ## 8. Phase 6: More trains
 
-Defined in `src/game/trains.ts` as data: number of cars, mass per car, length, speed and sprite.
+Status: done (2026-10-07).
 
-| Train | Cars | Mass | Notes |
-| --- | --- | --- | --- |
-| One-man handcar | 1 | very low | First vehicle (phase 2). |
-| Simple locomotive | 1 | low | Levels 1–3. |
-| Passenger train | 3–4 | medium | Screams when it falls. |
-| Goods train | 5–6 | high | Long load spread out over the bridge. |
-| Armored train | 2–3 | very high | Final levels. |
+A train is a chain of cars (`src/game/train.ts`): the cars are coupled at a fixed spacing and all
+roll at the train's speed. Each car finds its own track, tilts with it and loads the bridge with
+its own wheels. A car whose middle has no track under it falls; the cars behind keep rolling and
+follow it over the edge, one by one. The run is lost as soon as a car is in the water (or off the
+screen) and won when the last car is past the end of the bridge with nothing fallen.
+
+| Train (`VehicleId`) | Cars | Total mass | Speed | Look |
+| --- | --- | --- | --- | --- |
+| `handcar` | handcar | 140 | 16 | One man pumping the lever |
+| `maintenance` | shunter | 280 | 20 | Yellow diesel shunter, blinking beacon, hazard stripes |
+| `passenger` | engine + 3 coaches | 1040 | 24 | Green steam engine; maroon coaches with passengers at the windows |
+| `goods` | engine + 6 boxcars | 2180 | 18 | Boxcars in three colours |
+
+Stars (decided 2026-10-07): each level gives 1 to 4 stars, for the heaviest train that has
+crossed it (handcar 1, maintenance locomotive 2, passenger train 3, goods train 4). The train
+button in the toolbar cycles through the trains (it shows the train's stars); after a win the
+result panel offers "Heavier train". The best stars per level are saved (older saved progress
+counts as 1 star), shown in the level list, and 1 star unlocks the next level. Sound on/off moved
+to the HUD to make room for the train button.
+
+- Cars with people (handcar, shunter, engine, coaches) scream when they go over the edge, one
+  scream per car; every car splashes when it hits the water.
+- The toast and the result panel name the train ("Here comes the goods train!").
+
+Ideas for later: an armored train for final levels; smoke puffs from the steam engine; cars that
+pull each other when one falls instead of rolling on at constant speed.
 
 ---
 

@@ -3,33 +3,33 @@ import type { Level } from './level';
 import { createSimulation, stepSimulation, type Simulation } from './physics';
 import {
   buildTrack,
-  createVehicle,
-  stepVehicle,
+  createTrain,
+  stepTrain,
   wheelLoads,
-  type Vehicle,
-  type VehicleSpec,
+  type Train,
+  type TrainSpec,
 } from './train';
 
 /**
- * One attempt at crossing: the simulated bridge plus the vehicle on it.
+ * One attempt at crossing: the simulated bridge plus the train on it.
  * Shared by the engine and the tests, so both play out a run the same way.
  */
 export interface Run {
   sim: Simulation;
-  vehicle: Vehicle;
+  train: Train;
 }
 
-export function createRun(level: Level, bridge: Bridge): Run {
-  return { sim: createSimulation(bridge), vehicle: createVehicle(level) };
+export function createRun(level: Level, bridge: Bridge, spec: TrainSpec): Run {
+  return { sim: createSimulation(bridge), train: createTrain(level, spec) };
 }
 
 /**
- * Advances a run by `dt`: the vehicle's weight loads the bridge, the bridge
- * moves, and then the vehicle follows the track where it now is.
- * The simulation is changed in place; the vehicle is replaced.
+ * Advances a run by `dt`: the train's weight loads the bridge, the bridge
+ * moves, and then the train follows the track where it now is.
+ * The simulation is changed in place; the train is replaced.
  */
-export function stepRun(run: Run, level: Level, spec: VehicleSpec, dt: number): void {
-  const loads = wheelLoads(run.vehicle, spec, buildTrack(level, run.sim));
+export function stepRun(run: Run, level: Level, spec: TrainSpec, dt: number): void {
+  const loads = wheelLoads(run.train, spec, buildTrack(level, run.sim));
   stepSimulation(run.sim, loads, dt);
-  run.vehicle = stepVehicle(run.vehicle, spec, buildTrack(level, run.sim), level, dt);
+  run.train = stepTrain(run.train, spec, buildTrack(level, run.sim), level, dt);
 }

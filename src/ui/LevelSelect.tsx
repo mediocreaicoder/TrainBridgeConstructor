@@ -1,25 +1,20 @@
 import type { Level } from '../game/level';
-import { isUnlocked } from '../game/progress';
+import { isUnlocked, starsFor, type LevelStars } from '../game/progress';
+import { Stars } from './Stars';
 
 interface LevelSelectProps {
   levels: readonly Level[];
   currentIndex: number;
-  completed: ReadonlySet<number>;
+  stars: LevelStars;
   onSelect: (index: number) => void;
   onClose: () => void;
 }
 
 /**
- * The list of levels. Completed levels are marked, locked ones (the one
- * before isn't completed yet) can't be chosen.
+ * The list of levels with the best stars earned on each. Locked levels (the
+ * one before has no star yet) can't be chosen.
  */
-export function LevelSelect({
-  levels,
-  currentIndex,
-  completed,
-  onSelect,
-  onClose,
-}: LevelSelectProps) {
+export function LevelSelect({ levels, currentIndex, stars, onSelect, onClose }: LevelSelectProps) {
   return (
     <div className="result-backdrop">
       <div className="result-panel level-select" role="dialog" aria-labelledby="levels-title">
@@ -28,8 +23,7 @@ export function LevelSelect({
         </h2>
         <ol className="level-list">
           {levels.map((level, index) => {
-            const unlocked = isUnlocked(level.id, completed);
-            const done = completed.has(level.id);
+            const unlocked = isUnlocked(level.id, stars);
             return (
               <li key={level.id}>
                 <button
@@ -41,7 +35,7 @@ export function LevelSelect({
                 >
                   <span className="level-number">{level.id}</span>
                   <span className="level-name">{unlocked ? level.name : 'Locked'}</span>
-                  <span className="level-state">{done ? 'Done' : ''}</span>
+                  {unlocked && <Stars count={starsFor(level.id, stars)} />}
                 </button>
               </li>
             );

@@ -26,8 +26,8 @@ function simulate(sim: Simulation, seconds: number): Simulation {
 
 /** Plays a whole run with the handcar, until it is decided (or 15 s pass). */
 function playRun(bridge: Bridge): Run {
-  const run = createRun(level, bridge);
-  for (let t = 0; t < 15 && run.vehicle.outcome === null; t += STEP) {
+  const run = createRun(level, bridge, HANDCAR);
+  for (let t = 0; t < 15 && run.train.outcome === null; t += STEP) {
     stepRun(run, level, HANDCAR, STEP);
   }
   return run;
@@ -86,7 +86,7 @@ describe('stepSimulation', () => {
 describe('runs with the handcar', () => {
   it('breaks a deck of track alone, and the handcar is lost', () => {
     const run = playRun(trackDeck().bridge);
-    expect(run.vehicle.outcome).toBe('lost');
+    expect(run.train.outcome).toBe('lost');
     expect(brokenBeams(run.sim)).toBeGreaterThan(0);
   });
 
@@ -99,15 +99,15 @@ describe('runs with the handcar', () => {
 
   it('carries the handcar across a wooden Warren truss without breaking', () => {
     const run = playRun(warrenTruss());
-    expect(run.vehicle.outcome).toBe('arrived');
+    expect(run.train.outcome).toBe('arrived');
     expect(brokenBeams(run.sim)).toBe(0);
   });
 
   it('makes the deck sag more while the handcar is on it', () => {
-    const run = createRun(level, warrenTruss());
+    const run = createRun(level, warrenTruss(), HANDCAR);
     let emptySag = 0;
     let loadedSag = 0;
-    for (let t = 0; t < 9 && run.vehicle.outcome === null; t += STEP) {
+    for (let t = 0; t < 9 && run.train.outcome === null; t += STEP) {
       stepRun(run, level, HANDCAR, STEP);
       // Before the handcar reaches the bridge (~3 s) vs. when it is mid-span (~5.5 s).
       if (t > 2.5 && t < 2.6) emptySag = run.sim.particles[6]!.position.y;

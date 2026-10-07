@@ -1,32 +1,52 @@
 import type { RunOutcome } from '../game/train';
+import { Stars } from './Stars';
 
 interface ResultPanelProps {
   outcome: RunOutcome;
   /** Falling into water is a splash; into a dry ravine, a crash. */
   hasWater: boolean;
+  /** E.g. "handcar" or "goods train". */
+  trainName: string;
+  /** The level's best stars so far (including this run). */
+  stars: number;
   onTryAgain: () => void;
   onEdit: () => void;
-  /** Shown after a win when there is a next level. */
+  /** After a win: run the next heavier train on the same bridge. Null if there is none. */
+  onHeavierTrain: (() => void) | null;
+  /** After a win: go on to the next level. Null on the last level. */
   onNextLevel: (() => void) | null;
 }
 
-const ARRIVED = { title: 'Made it!', body: 'The handcar crossed the bridge.' };
-const SPLASH = { title: 'Splash!', body: 'The handcar ended up in the river.' };
-const CRASH = { title: 'Crash!', body: 'The handcar fell into the ravine.' };
+const TEXT = {
+  arrived: { title: 'Made it!', body: (train: string) => `The ${train} crossed the bridge.` },
+  splash: { title: 'Splash!', body: (train: string) => `The ${train} ended up in the river.` },
+  crash: { title: 'Crash!', body: (train: string) => `The ${train} fell into the ravine.` },
+};
 
 /**
- * Shown after a run has ended. "Try again" runs the same bridge once more;
- * "Edit bridge" closes the panel; after a win, "Next level" moves on.
+ * Shown after a run has ended, with the level's stars. After a win the player
+ * can send a heavier train across the same bridge (for more stars) or move
+ * on; after a loss, try again or fix the bridge.
  */
 export function ResultPanel({
   outcome,
   hasWater,
+  trainName,
+  stars,
   onTryAgain,
   onEdit,
+  onHeavierTrain,
   onNextLevel,
 }: ResultPanelProps) {
-  const { title, body } = outcome === 'arrived' ? ARRIVED : hasWater ? SPLASH : CRASH;
-  const showNext = outcome === 'arrived' && onNextLevel !== null;
+  const won = outcome === 'arrived';
+  const text = won ? TEXT.arrived : hasWater ? TEXT.splash : TEXT.crash;
+  const heavier = won ? onHeavierTrain : null;
+  const next = won ? onNextLevel : null;
+  // The first offered action is the highlighted (green) one.
+  const primary = heavier ? 'heavier' : next ? 'next' : 'again';
+  const buttonClass = (action: string) =>
+    action === primary ? 'toolbar-button toolbar-play' : 'toolbar-button';
+
   return (
     <div className="result-backdrop">
       <div
@@ -35,22 +55,28 @@ export function ResultPanel({
         aria-labelledby="result-title"
       >
         <h2 id="result-title" className="result-title">
-          {title}
+          {text.title}
         </h2>
-        <p className="result-body">{body}</p>
+        <p className="result-body">{text.body(trainName)}</p>
+        <div className="result-stars">
+          <Stars count={stars} />
+        </div>
         <div className="result-actions">
-          {showNext && (
-            <button type="button" className="toolbar-button toolbar-play" onClick={onNextLevel}>
+          {heavier && (
+            <button type="button" className={buttonClass('heavier')} onClick={heavier}>
+              Heavier train
+            </button>
+          )}
+          {next && (
+            <button type="button" className={buttonClass('next')} onClick={next}>
               Next level
             </button>
           )}
-          <button
-            type="button"
-            className={showNext ? 'toolbar-button' : 'toolbar-button toolbar-play'}
-            onClick={onTryAgain}
-          >
-            Try again
-          </button>
+          {!won && (
+            <button type="button" className={buttonClass('again')} onClick={onTryAgain}>
+              Try again
+            </button>
+          )}
           <button type="button" className="toolbar-button" onClick={onEdit}>
             Edit bridge
           </button>

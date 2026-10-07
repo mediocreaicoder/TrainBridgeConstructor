@@ -2,16 +2,24 @@ import { useCallback, useRef, useState } from 'react';
 import type { EngineEvent, EngineMode } from './game/Engine';
 import { getLevel, LEVELS, levelIndexFromQuery, type Level } from './game/level';
 import type { MaterialId } from './game/materials';
-import { startingLevelIndex } from './game/progress';
-import type { RunOutcome } from './game/train';
+import { startingLevelIndex, starsFor, withResult, type LevelStars } from './game/progress';
+import {
+  heavierTrain,
+  TRAIN_ORDER,
+  VEHICLES,
+  type RunOutcome,
+  type VehicleId,
+} from './game/train';
 import { GameCanvas, type GameControls } from './ui/GameCanvas';
 import { Hud } from './ui/Hud';
 import { LevelSelect } from './ui/LevelSelect';
 import {
-  loadCompletedLevels,
+  loadLevelStars,
   loadMuted,
-  saveCompletedLevels,
+  loadTrain,
+  saveLevelStars,
   saveMuted,
+  saveTrain,
 } from './ui/preferences';
 import { ResultPanel } from './ui/ResultPanel';
 import { Toast, type ToastMessage } from './ui/Toast';
@@ -32,25 +40,32 @@ const levelToast = (level: Level) =>
   toast(level.hint, LEVEL_TOAST_SECONDS, `Level ${level.id} · ${level.name}`);
 
 /** `?level=N` jumps straight to a level (for testing); otherwise continue where the player was. */
-function initialLevelIndex(completed: ReadonlySet<number>): number {
+function initialLevelIndex(stars: LevelStars): number {
   return (
     levelIndexFromQuery(window.location.search) ??
     startingLevelIndex(
       LEVELS.map((level) => level.id),
-      completed,
+      stars,
     )
   );
 }
 
+/** The result of the last run, for the result panel. */
+interface RunResult {
+  outcome: RunOutcome;
+  train: VehicleId;
+}
+
 export function App() {
-  const [completed, setCompleted] = useState(loadCompletedLevels);
-  const [levelIndex, setLevelIndex] = useState(() => initialLevelIndex(completed));
+  const [stars, setStars] = useState<LevelStars>(loadLevelStars);
+  const [levelIndex, setLevelIndex] = useState(() => initialLevelIndex(stars));
   const level = getLevel(levelIndex);
   const [material, setMaterial] = useState<MaterialId>('track');
+  const [train, setTrain] = useState<VehicleId>(loadTrain);
   const [muted, setMuted] = useState(loadMuted);
   const [mode, setMode] = useState<EngineMode>('edit');
   /** Result of the last run; cleared when the panel is closed or the bridge changes. */
-  const [outcome, setOutcome] = useState<RunOutcome | null>(null);
+  const [result, setResult] = useState<RunResult | null>(null);
   const [levelsOpen, setLevelsOpen] = useState(false);
   const [message, setMessage] = useState<ToastMessage | null>(() => levelToast(level));
   const hideMessage = useCallback(() => setMessage(null), []);
@@ -58,11 +73,11 @@ export function App() {
   const [zoom, setZoom] = useState({ canZoomIn: true, canZoomOut: false });
   const gameRef = useRef<GameControls>(null);
 
-  const markCompleted = useCallback((levelId: number) => {
-    setCompleted((previous) => {
-      if (previous.has(levelId)) return previous;
-      const next = new Set(previous).add(levelId);
-      saveCompletedLevels(next);
+  /** Saves the stars a winning train earned on this level, if it is a new best. */
+  const recordWin = useCallback((levelId: number, winner: VehicleId) => {
+    setStars((previous) => {
+      const next = withResult(previous, levelId, VEHICLES[winner].stars);
+      if (next !== previous) saveLevelStars(next);
       return next;
     });
   }, []);
@@ -72,7 +87,7 @@ export function App() {
       switch (event.type) {
         case 'historyChanged':
           setHistory({ canUndo: event.canUndo, canRedo: event.canRedo });
-          setOutcome(null); // the bridge changed, so the last result is out of date
+          setResult(null); // the bridge changed, so the last result is out of date
           break;
         case 'zoomChanged':
           setZoom({ canZoomIn: event.canZoomIn, canZoomOut: event.canZoomOut });
@@ -80,28 +95,41 @@ export function App() {
         case 'modeChanged':
           setMode(event.mode);
           // A new run starts undecided. Back in edit mode the result panel shows it.
-          if (event.mode === 'run') {
-            setOutcome(null);
-            setMessage(toast('Here comes the handcar!', RUN_TOAST_SECONDS));
-          }
+          if (event.mode === 'run') setResult(null);
           break;
         case 'runFinished':
-          setOutcome(event.outcome);
-          if (event.outcome === 'arrived') markCompleted(level.id);
+          setResult({ outcome: event.outcome, train: event.train });
+          if (event.outcome === 'arrived') recordWin(level.id, event.train);
           break;
       }
     },
-    [level.id, markCompleted],
+    [level.id, recordWin],
   );
+
+  const chooseTrain = (next: VehicleId) => {
+    setTrain(next);
+    saveTrain(next);
+  };
+
+  /** Sends `which` across, and says so in a toast. */
+  const play = (which: VehicleId = train) => {
+    chooseTrain(which);
+    setMessage(toast(`Here comes the ${VEHICLES[which].name}!`, RUN_TOAST_SECONDS));
+    gameRef.current?.play(which);
+  };
+
+  /** The train button cycles through the trains, light to heavy and round again. */
+  const nextTrain = () => {
+    const index = TRAIN_ORDER.indexOf(train);
+    chooseTrain(TRAIN_ORDER[(index + 1) % TRAIN_ORDER.length] ?? 'handcar');
+  };
 
   /** Switches level. The engine is recreated for it, with an empty bridge. */
   const selectLevel = (index: number) => {
-    const next = getLevel(index);
     setLevelIndex(index);
-    setOutcome(null);
+    setResult(null);
     setLevelsOpen(false);
-    setMessage(levelToast(next));
-    if (!next.allowedMaterials.includes(material)) setMaterial(next.allowedMaterials[0] ?? 'track');
+    setMessage(levelToast(getLevel(index)));
   };
 
   const toggleMute = () => {
@@ -110,6 +138,7 @@ export function App() {
   };
 
   const hasNextLevel = levelIndex + 1 < LEVELS.length;
+  const heavier = result ? heavierTrain(result.train) : null;
 
   return (
     <>
@@ -117,39 +146,44 @@ export function App() {
         ref={gameRef}
         level={level}
         material={material}
+        train={train}
         muted={muted}
         onEvent={handleEngineEvent}
       />
       <Hud
         level={level}
+        muted={muted}
         onOpenLevels={() => setLevelsOpen(true)}
         onShowHint={() => setMessage(levelToast(level))}
+        onToggleMute={toggleMute}
       />
       {message && <Toast message={message} onDone={hideMessage} />}
       <Toolbar
-        materials={level.allowedMaterials}
         material={material}
+        train={train}
         running={mode === 'run'}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
         canZoomIn={zoom.canZoomIn}
         canZoomOut={zoom.canZoomOut}
-        muted={muted}
         onMaterialChange={setMaterial}
+        onNextTrain={nextTrain}
         onUndo={() => gameRef.current?.undo()}
         onRedo={() => gameRef.current?.redo()}
         onZoomIn={() => gameRef.current?.zoomIn()}
         onZoomOut={() => gameRef.current?.zoomOut()}
-        onPlay={() => gameRef.current?.play()}
+        onPlay={() => play()}
         onStop={() => gameRef.current?.stop()}
-        onToggleMute={toggleMute}
       />
-      {mode === 'edit' && outcome && !levelsOpen && (
+      {mode === 'edit' && result && !levelsOpen && (
         <ResultPanel
-          outcome={outcome}
+          outcome={result.outcome}
           hasWater={level.waterY !== null}
-          onTryAgain={() => gameRef.current?.play()}
-          onEdit={() => setOutcome(null)}
+          trainName={VEHICLES[result.train].name}
+          stars={starsFor(level.id, stars)}
+          onTryAgain={() => play(result.train)}
+          onEdit={() => setResult(null)}
+          onHeavierTrain={heavier ? () => play(heavier) : null}
           onNextLevel={hasNextLevel ? () => selectLevel(levelIndex + 1) : null}
         />
       )}
@@ -157,7 +191,7 @@ export function App() {
         <LevelSelect
           levels={LEVELS}
           currentIndex={levelIndex}
-          completed={completed}
+          stars={stars}
           onSelect={selectLevel}
           onClose={() => setLevelsOpen(false)}
         />

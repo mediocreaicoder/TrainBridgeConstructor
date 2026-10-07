@@ -6,7 +6,7 @@ import type { Level, Pillar } from './level';
 import { MATERIALS, type MaterialId } from './materials';
 import { particleAt, type Simulation } from './physics';
 import { forEachLinePixel } from './pixelLine';
-import { drawVehicle } from './renderVehicle';
+import { drawTrain } from './renderVehicle';
 import type { Run } from './run';
 import type { Vec2 } from './types';
 
@@ -114,7 +114,7 @@ export function renderFrame(
   if (state.run) {
     drawSimulatedBeams(ctx, state.run.sim);
     drawJoints(ctx, simulatedJoints(state.run.sim), null, state.time);
-    drawVehicle(ctx, state.run.vehicle, camera.pixelScale);
+    drawTrain(ctx, state.run.train, camera.pixelScale);
   } else {
     drawBeams(ctx, state.bridge);
     if (state.plan) drawBeamPlan(ctx, state.plan);

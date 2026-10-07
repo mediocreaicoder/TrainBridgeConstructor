@@ -1,5 +1,3 @@
-import type { MaterialId } from './materials';
-import type { VehicleId } from './train';
 import type { Vec2 } from './types';
 
 /**
@@ -28,9 +26,6 @@ export interface Level {
   bridgeStart: Vec2;
   /** Where the track continues on the right: the bridge must reach here. */
   bridgeEnd: Vec2;
-  /** Materials the player may build with, in toolbar order. */
-  allowedMaterials: MaterialId[];
-  vehicle: VehicleId;
 }
 
 /** A pillar standing on the ground at `x`, reaching up to `top`. */
@@ -88,8 +83,6 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 100, y: 75 },
     bridgeEnd: { x: 220, y: 75 },
-    allowedMaterials: ['track', 'wood'],
-    vehicle: 'handcar',
   },
   {
     id: 2,
@@ -130,8 +123,6 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 70, y: 75 },
     bridgeEnd: { x: 250, y: 75 },
-    allowedMaterials: ['track', 'wood'],
-    vehicle: 'handcar',
   },
   {
     id: 3,
@@ -159,8 +150,6 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 70, y: 75 },
     bridgeEnd: { x: 250, y: 75 },
-    allowedMaterials: ['track', 'wood'],
-    vehicle: 'handcar',
   },
   {
     id: 4,
@@ -190,8 +179,6 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 70, y: 75 },
     bridgeEnd: { x: 250, y: 75 },
-    allowedMaterials: ['track', 'wood'],
-    vehicle: 'handcar',
   },
   {
     id: 5,
@@ -216,13 +203,11 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 85, y: 75 },
     bridgeEnd: { x: 235, y: 75 },
-    allowedMaterials: ['track', 'cable'],
-    vehicle: 'handcar',
   },
   {
     id: 6,
     name: 'Long Haul',
-    hint: 'Too far for wood alone. Steel is strong and reaches far',
+    hint: 'A long way across. Steel is strong and reaches far',
     width: WIDTH,
     height: HEIGHT,
     terrain: [
@@ -243,8 +228,83 @@ export const LEVELS: readonly Level[] = [
     ],
     bridgeStart: { x: 70, y: 75 },
     bridgeEnd: { x: 250, y: 75 },
-    allowedMaterials: ['track', 'wood', 'steel'],
-    vehicle: 'handcar',
+  },
+  {
+    id: 7,
+    name: 'Bare Cliffs',
+    hint: 'No anchors on the cliffs. The bridge has to carry itself',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 100, y: 75 }, [
+        { x: 110, y: 120 },
+        { x: 118, y: FAR },
+      ]),
+      rightBank({ x: 220, y: 75 }, [
+        { x: 210, y: 120 },
+        { x: 202, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: 150,
+    anchors: [
+      { x: 100, y: 75 },
+      { x: 220, y: 75 },
+    ],
+    bridgeStart: { x: 100, y: 75 },
+    bridgeEnd: { x: 220, y: 75 },
+  },
+  {
+    id: 8,
+    name: 'Ledges',
+    hint: 'Spread the weight onto the anchors on the cliffs',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 85, y: 75 }, [
+        { x: 95, y: 120 },
+        { x: 103, y: FAR },
+      ]),
+      rightBank({ x: 235, y: 75 }, [
+        { x: 225, y: 120 },
+        { x: 217, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: 150,
+    anchors: [
+      { x: 85, y: 75 },
+      { x: 95, y: 120 },
+      { x: 235, y: 75 },
+      { x: 225, y: 120 },
+    ],
+    bridgeStart: { x: 85, y: 75 },
+    bridgeEnd: { x: 235, y: 75 },
+  },
+  {
+    id: 9,
+    name: 'Grand Span',
+    hint: 'A long span. Brace the track from above and below',
+    width: WIDTH,
+    height: HEIGHT,
+    terrain: [
+      leftBank({ x: 70, y: 75 }, [
+        { x: 79, y: 135 },
+        { x: 85, y: FAR },
+      ]),
+      rightBank({ x: 250, y: 75 }, [
+        { x: 241, y: 135 },
+        { x: 235, y: FAR },
+      ]),
+    ],
+    pillars: [],
+    waterY: 157,
+    anchors: [
+      { x: 70, y: 75 },
+      { x: 250, y: 75 },
+    ],
+    bridgeStart: { x: 70, y: 75 },
+    bridgeEnd: { x: 250, y: 75 },
   },
 ];
 
