@@ -112,6 +112,8 @@ What doesn't exist yet: terrain collisions, recorded sounds, saved bridges.
    touches the Engine instance; pass it down via a ref or context if the toolbar needs it.
 2. **Game logic is pure TypeScript** and can be tested in Node without a browser. Keep DOM and
    canvas code in `Engine.ts` and `render.ts`; keep models (bridge, physics, train) DOM-free.
+   From phase 8 on, the same code also runs on the server (Cloudflare Worker), whose type check
+   has no DOM and enforces this.
 3. **World units = virtual pixels.** Origin top-left, y down. Round to whole pixels when drawing
    so the pixel look stays crisp.
 4. **Terrain polygons are clockwise** (grass is drawn on top edges that go rightwards) and
@@ -503,21 +505,241 @@ pull each other when one falls instead of rolling on at constant speed.
 - Optional haptics on beam breaks (not supported in iOS Safari; skip if it adds complexity).
 - ~~Budget per level~~: done (see phase 6).
 
+## 10. Phase 8: Landing page and high scores
+
+Status: planned (2026-10-07).
+
+Goal: a landing page where people pick a level and play it, and a global high-score list per
+level and train, ranked by the cheapest bridge that gets the train across. New versions of both
+the game and the API go live by pushing to `main`, as today.
+
+### Architecture
+
+- **Frontend** stays on GitHub Pages (unchanged deploy).
+- **API**: a Cloudflare Worker with a D1 (SQLite) database, in a new `worker/` folder in the same
+  repo. Both run on Cloudflare's free plan at hobby scale.
+- **Shared game code**: the worker imports `src/game/` directly (`bridge.ts`, `materials.ts`,
+  `physics.ts`, `train.ts`, `run.ts`, `level.ts`, `bridgeCost()`). No copy, no package. This is
+  what makes server-side verification possible, and why rule 2 ("game logic is pure TypeScript")
+  matters.
+- Considered and rejected: Supabase (free projects are paused after about a week of low activity,
+  bad for a hobby game that may sit idle), scores stored as files in a GitHub repo (slow and
+  awkward), and trusting scores sent by the client (trivially faked).
+
+### Repo layout
+
+```
+src/game/verify.ts          headless run of a submitted bridge (pure, shared)
+src/game/apiTypes.ts        request/response types shared by client and worker
+src/ui/api.ts               fetch wrapper used by React
+src/ui/LandingPage.tsx      title + level grid (builds on LevelSelect.tsx)
+src/ui/Leaderboard.tsx      top list per level, with train tabs
+worker/
+  src/index.ts              routing, CORS, rate limiting
+  src/scores.ts             D1 queries (one function per query)
+  src/validate.ts           runtime checks of request bodies
+  migrations/0001_scores.sql
+  wrangler.toml             worker name, D1 binding
+  tsconfig.json             lib ES2022 + Workers types, **no "dom"**
+```
+
+The worker's `tsconfig.json` deliberately leaves out the DOM lib. If anything in `src/game/`
+that the worker imports touches `window`, `document`, `AudioContext` or canvas, the worker's
+type check fails. Add `npm run typecheck:worker` and run it in CI. (`verify.ts` must not import
+`Engine.ts`, `render.ts`, `renderVehicle.ts`, `audio.ts` or `debug.ts`.)
+
+### Server-side verification (the core of this phase)
+
+The client never sends a score. It sends the **bridge**, and the server computes the result.
+
+- `verifyRun(levelId, vehicleId, bridge)` in `src/game/verify.ts` returns
+  `{ ok: true, cost, simSeconds } | { ok: false, reason }`. Steps:
+  1. **Validate the bridge** against the level: the fixed joints match the level's anchors and
+     bridge ends exactly, every beam passes `canPlaceBeam` (length, no joint inside terrain, no
+     duplicates), every material is in `allowedMaterials`, ids are consistent, and the bridge is
+     within size limits (for example 200 joints and 400 beams).
+  2. **Run it headless** with `createRun` / `stepRun` from `run.ts` at the same fixed 1/120 s
+     step as the engine, until the train's outcome is `arrived` or `lost`, or a timeout (for
+     example 60 simulated seconds).
+  3. **Compute the cost** with `bridgeCost()`. A cost sent by the client is ignored.
+- The engine can call the same `verifyRun` (or simply use the run that just played) so the
+  player sees exactly the cost the server will compute.
+
+### Determinism across JavaScript engines
+
+The server (V8 in the Worker) must get exactly the same result as the player's phone
+(JavaScriptCore on iPhone) and Chrome, or winning bridges will be rejected.
+
+- `+ - * /` and `Math.sqrt` are exact IEEE 754 operations: identical everywhere.
+- `Math.sin`, `cos`, `atan2`, `exp`, `pow`, `hypot` and friends are **not** guaranteed to give
+  the same last bit on different engines. Today they are used in the simulation path:
+  - `physics.ts`: `Math.exp(-DAMPING * h)` (damping factor) and `Math.hypot(dx, dy)` (beam
+    length).
+  - `train.ts`: `Math.sin(car.angle)`, `Math.atan2(...)` for the car tilt, and
+    `Math.cos/sin(car.angle)` for the velocity when a car starts falling.
+- Fix before the server goes live:
+  - Damping: precompute the factor as a constant (`h` is fixed), written as a literal number
+    (or computed with `1 - DAMPING * h + ...` using only `+ - * /`).
+  - Beam length: `Math.sqrt(dx * dx + dy * dy)`.
+  - Car tilt: store the car's direction as a unit vector (`dirX`, `dirY`, from the two wheel
+    heights via `Math.sqrt`) instead of an angle. Rendering can still call `Math.atan2` on it,
+    since rendering never feeds back into the simulation.
+- Add an ESLint `no-restricted-properties` rule for `physics.ts`, `train.ts`, `run.ts` and
+  `verify.ts` that forbids those `Math` functions, so they don't creep back in.
+- `physicsVersion`: add `PHYSICS_VERSION` (an integer) in `src/game/`. Bump it whenever a change
+  in physics, trains, materials, levels or cost could change a result. Scores are stored with
+  the version, and lists show only the current version (see section 11 for what happens to old
+  scores).
+- Golden test: a stored bridge must give an exact stored result (positions after N steps and the
+  outcome). Run it in Node in CI, and once by hand in Safari on the iPhone via the dev hook
+  (`window.__game`), to confirm V8 and JavaScriptCore agree.
+
+### CPU time
+
+Measure `verifyRun` in Node for the worst case (Grand Span with the goods train and a bridge at
+the size limit) before writing the worker. The free Workers plan allows only a few ms of CPU per
+request; check the current limit in Cloudflare's docs. If a run doesn't fit:
+
+- Option A: store the submission as `pending` and verify it in a scheduled worker (Cron Trigger)
+  in small batches. The client shows "submitted, verifying…".
+- Option B: Workers Paid (about 5 USD per month at the time of writing; check the current price),
+  which raises the limit.
+
+Decide with the user once the numbers are in.
+
+### Database: `worker/migrations/0001_scores.sql`
+
+```sql
+CREATE TABLE scores (
+  id              INTEGER PRIMARY KEY,
+  level_id        INTEGER NOT NULL,
+  vehicle_id      TEXT    NOT NULL,   -- 'handcar' | 'maintenance' | 'passenger' | 'goods'
+  physics_version INTEGER NOT NULL,
+  player_id       TEXT    NOT NULL,   -- random UUID from the client
+  nickname        TEXT    NOT NULL,
+  cost            INTEGER NOT NULL,   -- computed by the server
+  bridge_json     TEXT    NOT NULL,   -- for replays and re-verification
+  created_at      INTEGER NOT NULL,   -- unix ms
+  UNIQUE (level_id, vehicle_id, physics_version, player_id)
+);
+
+CREATE INDEX scores_board
+  ON scores (level_id, vehicle_id, physics_version, cost, created_at);
+```
+
+- One row per player per (level, train, version). A new submission replaces the row only if its
+  cost is lower (`INSERT ... ON CONFLICT DO UPDATE ... WHERE excluded.cost < scores.cost`).
+- Ranking: lowest `cost` first, earliest `created_at` wins ties.
+- Rank of a score: `SELECT COUNT(*) + 1 ... WHERE cost < ? OR (cost = ? AND created_at < ?)`,
+  which the index covers.
+
+### API
+
+| Method and path | Purpose | Responses |
+| --- | --- | --- |
+| `GET /levels/:levelId/scores?vehicle=:vehicleId&limit=20` | Top list | `200 { entries: [{ rank, nickname, cost, createdAt, scoreId }] }` |
+| `GET /levels/best` | Best cost per level and train, for the landing page | `200 { [levelId]: { [vehicleId]: cost } }` |
+| `GET /scores/:scoreId/bridge` | Bridge for replay | `200 Bridge` / `404` |
+| `POST /scores` | Submit a bridge | `200 { cost, rank, improved }` / `422 { reason }` / `409` wrong physics version / `429` |
+
+- `POST` body: `{ levelId, vehicleId, physicsVersion, playerId, nickname, bridge }`. Max 32 KB.
+  Checked at runtime in `worker/src/validate.ts` with small hand-written type guards (no new
+  dependencies; ask before adding something like zod).
+- CORS: allow `https://mediocreaicoder.github.io` and `http://localhost:5173` only.
+- Rate limiting: for example 10 `POST` per minute per IP. Use whatever Cloudflare offers on the
+  free plan at the time (check the docs); a fallback is a small counter table in D1.
+- Cache the `GET` lists for about 60 seconds with the Workers Cache API, and purge that level's
+  list after a successful `POST`. This keeps D1 row reads low.
+
+### Free-plan limits to respect
+
+- D1 on the free plan has daily row-read and row-write limits, and since 1 September 2026
+  queries fail when they are exceeded (until midnight UTC). So: every query goes through the
+  index, always use `LIMIT`, never scan the whole table, and cache the lists.
+- Before starting, read Cloudflare's current limits pages for Workers and D1 and note the
+  numbers here.
+
+### Player identity
+
+- No login. `playerId = crypto.randomUUID()`, stored in `localStorage` via `ui/preferences.ts`
+  (try/catch, like the other settings). Clearing site data means a new player; that is
+  acceptable.
+- Nickname: asked for the first time the player submits. 3–16 characters: letters (including
+  æ, ø, å), digits, space, `-` and `_`. A small blocklist for obvious abuse, checked on the
+  server. The player can change it later; it updates all their rows.
+
+### Frontend
+
+- **Routing** with the URL hash (`#/`, `#/level/3`, `#/level/3/scores`), since GitHub Pages has
+  no fallback for client-side routes. A small `useHashRoute()` hook; no router library.
+  `?level=N` keeps working for testing.
+- **Landing page** (`LandingPage.tsx`): title, the level grid from `LevelSelect.tsx` with stars
+  and locks as today, plus for each level the player's own best cost and the global best (from
+  `GET /levels/best`). Tapping a level opens the game.
+- **Saving the player's bridges**: needed to submit and to replay; store the last winning bridge
+  per level and train in `localStorage` (this also fulfils "saved bridges" from the wish list).
+- **After a win**: `ResultPanel.tsx` shows the cost and a "Submit score" button, then the rank
+  the server returns ("#4 on Wide Gap with the passenger train").
+- **Leaderboard** (`Leaderboard.tsx`): one tab per train, top 20, the player's own row
+  highlighted. Tapping a row loads that bridge read-only and plays it (replay).
+- **API base URL** from `import.meta.env.VITE_API_URL`. If the API is unreachable, the game
+  still works: score parts are hidden behind a short "high scores unavailable" message.
+
+### Deploy on push
+
+- New job in `.github/workflows/deploy.yml` (the user edits this file by hand), after lint and
+  tests, using `cloudflare/wrangler-action`:
+  1. `wrangler d1 migrations apply <db-name> --remote`
+  2. `wrangler deploy`
+- The Pages build gets `VITE_API_URL` from a GitHub repository variable.
+- One-time manual setup by the user (Claude writes a step-by-step list when the phase starts):
+  create a Cloudflare account, run `npx wrangler d1 create <db-name>` and put the `database_id`
+  into `wrangler.toml`, create an API token with Workers and D1 edit rights, and add
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub secrets.
+- Local development: `npx wrangler dev` (local D1 copy) next to `npm run dev`, with
+  `VITE_API_URL=http://localhost:8787` in `.env.development`.
+- `wrangler` becomes a dev dependency (ask before adding, per the working agreement).
+
+### Tests
+
+- `verify.test.ts`:
+  - The reference solutions from `levels.test.ts` win and give the expected cost; the naive
+    bridges are rejected with `lost`.
+  - Tampered bridges are rejected: a beam longer than `maxLength`, a material not allowed on the
+    level, a moved anchor, a joint inside terrain, too many beams, broken ids.
+  - Golden determinism test (see above). If it changes, `PHYSICS_VERSION` must be bumped.
+- Worker tests for routing, validation, "only a cheaper bridge replaces the row" and rank
+  calculation. Test against a fake D1, or use `@cloudflare/vitest-pool-workers` (ask first).
+
+Done when: on the phone you can open the landing page, win a level, submit with a nickname and
+see yourself on the list; a second device sees the same list; a hand-made `POST` with a fake or
+invalid bridge is rejected; and one push to `main` deploys both the game and the API.
+
 ---
 
-## 10. Decisions to clarify with the user along the way
+## 11. Decisions to clarify with the user along the way
 
 - Grid snap size (suggestion: 5 units), and whether beams may cross each other.
 - Whether the bridge must be built from the start flag, or whether free floating beams are allowed.
 - Touch: offset the drag point above the finger, or use a magnifier?
 - ~~Sound: generated sounds, or CC0 recordings?~~ Decided: generated now, recordings later.
 - Whether the train should brake or keep going when the bridge starts to fail.
+- High scores (phase 8):
+  - Do over-budget bridges count on the list, or only bridges within the level's budget?
+  - If `verifyRun` doesn't fit the free CPU limit: verify in the background (Cron Trigger), or
+    pay for Workers Paid?
+  - When `PHYSICS_VERSION` is bumped: start fresh lists, or re-verify stored bridges with the
+    new physics and keep the ones that still win?
+  - Should replays of other players' bridges be public (it makes copying the best bridge easy)?
+  - Custom domain, or keep `github.io` and `workers.dev`?
 
 ---
 
-## 11. Manual test on the phone (each phase)
+## 12. Manual test on the phone (each phase)
 
 1. Open the Pages URL (or the dev server's `Network:` URL on the same Wi-Fi).
 2. Portrait and landscape, and a reload in both.
 3. All gestures with fingers, including fast double-taps (no page zoom must happen).
 4. Added to the home screen: fullscreen, no address bar, and the notch doesn't cover the UI.
+5. From phase 8: the landing page and leaderboard load, a score can be submitted, and the game
+   still works with the network turned off.
