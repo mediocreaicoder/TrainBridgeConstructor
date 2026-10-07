@@ -391,3 +391,10 @@ body,
   font-size: 7px;
   color: #ff6a5c;
 }
+
+/* Pixel icons take the button's text colour and stay crisp. */
+.pixel-icon {
+  display: block;
+  fill: currentColor;
+  filter: drop-shadow(1px 1px 0 #1c1c1c);
+}

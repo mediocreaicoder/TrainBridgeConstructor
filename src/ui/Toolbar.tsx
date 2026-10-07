@@ -1,5 +1,6 @@
 import { MATERIAL_IDS, MATERIALS, type MaterialId } from '../game/materials';
 import { VEHICLES, type VehicleId } from '../game/train';
+import { PixelIcon } from './PixelIcon';
 import { Stars } from './Stars';
 
 interface ToolbarProps {
@@ -68,18 +69,22 @@ export function Toolbar({
         <button
           type="button"
           className="toolbar-button"
+          aria-label="Undo"
+          title="Undo"
           disabled={running || !canUndo}
           onClick={onUndo}
         >
-          Undo
+          <PixelIcon name="undo" />
         </button>
         <button
           type="button"
           className="toolbar-button"
+          aria-label="Redo"
+          title="Redo"
           disabled={running || !canRedo}
           onClick={onRedo}
         >
-          Redo
+          <PixelIcon name="redo" />
         </button>
         <button
           type="button"
@@ -112,9 +117,11 @@ export function Toolbar({
         <button
           type="button"
           className={`toolbar-button ${running ? 'toolbar-stop' : 'toolbar-play'}`}
+          aria-label={running ? 'Stop' : 'Play'}
+          title={running ? 'Stop' : 'Play'}
           onClick={running ? onStop : onPlay}
         >
-          {running ? 'Stop' : 'Play'}
+          <PixelIcon name={running ? 'stop' : 'play'} />
         </button>
       </div>
     </div>
