@@ -533,6 +533,8 @@ Decisions (2026-10-07):
 - **List**: after submitting (or when the result panel opens after a win), the result panel shows
   the top 10 for that level and train (cheapest bridge first, earliest wins ties) and the
   player's own rank. Nothing else in the frontend changes.
+- **Records in the level list** (added 2026-10-07): each unlocked level shows its record (the
+  cheapest bridge and who built it) for the selected train, as something to aim for.
 - One row per player per level, train and `PHYSICS_VERSION`; a new submission replaces it only if
   it is cheaper. The physics version is stored from the start, so lists can start fresh when it
   is bumped (decided earlier).
@@ -551,6 +553,7 @@ API (8a):
 | --- | --- |
 | `GET /scores?level=1&vehicle=goods&player=<uuid>` | Top 10 `{ entries: [{ rank, nickname, cost }], you: { rank, cost } \| null }` |
 | `POST /scores` | Body `{ levelId, vehicleId, physicsVersion, playerId, nickname, cost, bridge }`, returns `{ rank, improved }` |
+| `GET /records?vehicle=goods&version=1` | Rank 1 on every level `{ records: [{ levelId, nickname, cost }] }` |
 
 ### 8b: later (the full plan below)
 

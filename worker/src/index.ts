@@ -1,11 +1,12 @@
-import { readScores, submitScore } from './scores';
-import { parseListKey, parsePlayerId, parseSubmission } from './submission';
+import { readRecords, readScores, submitScore } from './scores';
+import { parseListKey, parsePlayerId, parseRecordsKey, parseSubmission } from './submission';
 
 /**
  * The high-score API (docs/PLAN.md, phase 8a):
  *
  *   GET  /scores?level=1&vehicle=goods&version=1&player=<uuid>  top 10 and the player's rank
  *   POST /scores                                                 submit a winning bridge
+ *   GET  /records?vehicle=goods&version=1                        rank 1 on every level
  *
  * Everything is public and there are no cookies, so any origin may call it.
  */
@@ -38,6 +39,7 @@ export default {
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
+  if (url.pathname === '/records' && request.method === 'GET') return getRecords(url, env);
   if (url.pathname !== '/scores') return json({ error: 'Not found' }, 404);
 
   switch (request.method) {
@@ -54,6 +56,12 @@ async function getScores(url: URL, env: Env): Promise<Response> {
   const key = parseListKey(url.searchParams);
   if (typeof key === 'string') return json({ error: key }, 400);
   return json(await readScores(env.DB, key, parsePlayerId(url.searchParams)));
+}
+
+async function getRecords(url: URL, env: Env): Promise<Response> {
+  const key = parseRecordsKey(url.searchParams);
+  if (typeof key === 'string') return json({ error: key }, 400);
+  return json({ records: await readRecords(env.DB, key) });
 }
 
 async function postScore(request: Request, env: Env): Promise<Response> {

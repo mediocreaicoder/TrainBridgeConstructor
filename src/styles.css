@@ -249,6 +249,25 @@ body,
 .level-name {
   flex: 1;
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The record to beat, under the level name. */
+.level-record {
+  font-size: 6px;
+  color: #ffd84a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.level-records-title {
+  margin: -4px 0 8px;
+  font-size: 7px;
+  color: #ffd84a;
 }
 
 .level-state {

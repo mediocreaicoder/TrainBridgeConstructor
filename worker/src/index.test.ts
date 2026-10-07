@@ -132,6 +132,27 @@ describe('GET /scores', () => {
   });
 });
 
+describe('GET /records', () => {
+  it('gives the cheapest bridge on every level for one train', async () => {
+    await submit(PLAYER_A, 900);
+    await submit(PLAYER_B, 700);
+    await submit(PLAYER_A, 500, { levelId: 3 });
+    await submit(PLAYER_C, 100, { vehicleId: 'handcar' });
+    await submit(PLAYER_C, 100, { physicsVersion: 2 });
+    const response = await call('GET', '/records?vehicle=goods&version=1');
+    expect(await response.json()).toEqual({
+      records: [
+        { levelId: 1, nickname: 'Player 2', cost: 700 },
+        { levelId: 3, nickname: 'Player 1', cost: 500 },
+      ],
+    });
+  });
+
+  it('refuses a malformed query', async () => {
+    expect((await call('GET', '/records?vehicle=goods')).status).toBe(400);
+  });
+});
+
 describe('routing', () => {
   it('answers CORS preflight and allows any origin', async () => {
     const response = await call('OPTIONS', '/scores');

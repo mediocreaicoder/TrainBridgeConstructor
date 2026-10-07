@@ -25,6 +25,13 @@ export interface ScoreList {
   you: { rank: number; cost: number } | null;
 }
 
+/** The number one on one level's list. */
+export interface LevelRecord {
+  levelId: number;
+  nickname: string;
+  cost: number;
+}
+
 export interface SubmitResult {
   rank: number;
   /** False if the player already had an equal or cheaper bridge on the list. */
@@ -57,6 +64,13 @@ export function fetchScores(
     player: playerId,
   });
   return request<ScoreList>(`/scores?${query}`);
+}
+
+/** The record on every level that has one, for one train. */
+export async function fetchRecords(vehicleId: VehicleId): Promise<LevelRecord[]> {
+  const query = new URLSearchParams({ vehicle: vehicleId, version: String(PHYSICS_VERSION) });
+  const { records } = await request<{ records: LevelRecord[] }>(`/records?${query}`);
+  return records;
 }
 
 export function submitScore(submission: ScoreSubmission): Promise<SubmitResult> {

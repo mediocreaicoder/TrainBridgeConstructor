@@ -61,6 +61,21 @@ export function parseSubmission(body: unknown): Submission | string {
   };
 }
 
+/** Which records to read: one train, one version of the physics, every level. */
+export interface RecordsKey {
+  vehicleId: string;
+  physicsVersion: number;
+}
+
+/** Reads `vehicle` and `version` from a query string. */
+export function parseRecordsKey(params: URLSearchParams): RecordsKey | string {
+  const vehicleId = params.get('vehicle') ?? '';
+  const physicsVersion = Number(params.get('version'));
+  if (!VEHICLE_ID.test(vehicleId)) return 'Bad vehicle';
+  if (!isWholeNumber(physicsVersion, 1, 1_000_000)) return 'Bad version';
+  return { vehicleId, physicsVersion };
+}
+
 /** Reads `level`, `vehicle` and `version` from a query string. */
 export function parseListKey(params: URLSearchParams): ListKey | string {
   const levelId = Number(params.get('level'));

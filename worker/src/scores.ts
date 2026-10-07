@@ -1,4 +1,4 @@
-import type { ListKey, Submission } from './submission';
+import type { ListKey, RecordsKey, Submission } from './submission';
 
 /** How many entries a list shows. */
 export const TOP_COUNT = 10;
@@ -13,6 +13,13 @@ export interface ScoreList {
   entries: ListEntry[];
   /** The asking player's own entry, if they have one (even outside the top 10). */
   you: { rank: number; cost: number } | null;
+}
+
+/** The number one on one level's list. */
+export interface LevelRecord {
+  levelId: number;
+  nickname: string;
+  cost: number;
 }
 
 export interface SubmitResult {
@@ -74,6 +81,25 @@ export async function readScores(
   const entries = results.map((row, index) => ({ rank: index + 1, ...row }));
   const you = playerId ? await ownEntry(db, key, playerId) : null;
   return { entries, you };
+}
+
+/**
+ * The record (rank 1, same ordering as the lists) on every level that has
+ * one, for one train. Levels without scores are left out.
+ */
+export async function readRecords(db: D1Database, key: RecordsKey): Promise<LevelRecord[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT level_id AS levelId, nickname, cost FROM (
+         SELECT level_id, nickname, cost, ROW_NUMBER() OVER (
+           PARTITION BY level_id ORDER BY cost, created_at, rowid) AS position
+         FROM scores WHERE vehicle_id = ?1 AND physics_version = ?2)
+       WHERE position = 1
+       ORDER BY level_id`,
+    )
+    .bind(key.vehicleId, key.physicsVersion)
+    .all<LevelRecord>();
+  return results;
 }
 
 /** The player's row and rank: one more than the number of rows ahead of it. */

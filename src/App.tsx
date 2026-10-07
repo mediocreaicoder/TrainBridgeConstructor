@@ -226,6 +226,7 @@ export function App() {
           levels={LEVELS}
           currentIndex={levelIndex}
           stars={stars}
+          train={train}
           onSelect={selectLevel}
           onClose={() => setLevelsOpen(false)}
         />
